@@ -1,0 +1,40 @@
+formatter: markdown table
+version: ">= 0.19.0"
+
+recursive:
+  enabled: true
+  path: modules
+  include-main: false
+
+output:
+  file: README.md
+  mode: inject
+  template: |-
+    <!-- BEGIN_TF_DOCS -->
+    {{ .Content }}
+    <!-- END_TF_DOCS -->
+
+sections:
+  # The `providers` section reports the **resolved** provider version, read from
+  # the local `.terraform/`. It changes from machine to machine and in CI, where
+  # there is no init at all: with `fail-on-diff` it would turn the gate red for a
+  # reason that has nothing to do with the documentation. The version constraint
+  # stays visible under `requirements`.
+  hide:
+    - providers
+
+sort:
+  enabled: true
+  by: required
+
+settings:
+  anchor: true
+  default: true
+  description: true
+  escape: true
+  hide-empty: true
+  html: true
+  indent: 2
+  required: true
+  sensitive: true
+  type: true

@@ -1,0 +1,12 @@
+misconfiguration:
+  terraform:
+    # Upstream modules downloaded into `.terraform/` are not this repo's code:
+    # including them would report findings from their own examples and Dockerfiles.
+    exclude-downloaded-modules: true
+
+# The `examples/` are scanned just like the modules, on purpose. They are CI
+# fixtures but they get copied, and the resources they write natively do not have
+# the modules' opinionated defaults: the first real run of this job found three
+# unencrypted queues/topics in exactly that place. Deliberate exceptions are
+# annotated inline with `#trivy:ignore:<ID>` and the reason next to the resource,
+# not here.

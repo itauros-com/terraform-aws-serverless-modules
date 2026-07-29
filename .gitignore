@@ -1,0 +1,47 @@
+# Terraform working directories
+.terraform/
+.terraform.tfstate.lock.info
+
+# Lock files: this repo contains only reusable modules and ephemeral CI fixtures
+# under examples/. Lock files are a root-module concern and would go stale here.
+.terraform.lock.hcl
+
+# State — never produced by this repo, but keep the guard
+*.tfstate
+*.tfstate.*
+
+# Plans and crash logs
+*.tfplan
+*.tfplan.json
+crash.log
+crash.*.log
+
+# Variable files: this repo must not carry environment or client configuration
+*.tfvars
+*.tfvars.json
+!examples/**/*.tfvars
+
+# Overrides
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration
+.terraformrc
+terraform.rc
+
+# macOS
+.DS_Store
+._*
+
+# Migration tooling from the monolithic root config to modules/app.
+#
+# It stays out of the repo on purpose: it is only useful in the first phase, to whoever
+# has a monolith to convert, and it is not part of the library's public contract.
+# The code still lives locally.
+tools/
+
+# Assistant configuration: local, not part of the repo.
+CLAUDE.md
+.claude/

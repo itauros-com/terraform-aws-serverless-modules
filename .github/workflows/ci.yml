@@ -1,0 +1,168 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: "1.15.8"
+  TERRAFORM_DOCS_VERSION: "0.24.0"
+  TRIVY_VERSION: "0.72.0"
+  TF_IN_AUTOMATION: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: discover modules
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.list.outputs.modules }}
+      examples: ${{ steps.list.outputs.examples }}
+      testable: ${{ steps.list.outputs.testable }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: |
+          echo "modules=$(find modules -mindepth 1 -maxdepth 1 -type d | sort | jq -Rrc '[.]' | jq -sc 'add')" >> "$GITHUB_OUTPUT"
+          echo "examples=$(find examples -mindepth 1 -maxdepth 1 -type d | sort | jq -Rrc '[.]' | jq -sc 'add')" >> "$GITHUB_OUTPUT"
+          echo "testable=$(find modules examples -mindepth 2 -maxdepth 2 -type d -name tests | xargs -n1 dirname | sort | jq -Rrc '[.]' | jq -sc 'add')" >> "$GITHUB_OUTPUT"
+
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive -diff
+
+  validate:
+    name: validate ${{ matrix.dir }}
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.discover.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - run: terraform -chdir=${{ matrix.dir }} init -backend=false -input=false
+      - run: terraform -chdir=${{ matrix.dir }} validate
+
+  # The resolvers, the wiring graph and the IAM generation are pure computation
+  # over locals: they are tested with mock_provider, without credentials and
+  # without touching AWS.
+  #
+  # The examples belong here and not just in `validate`: validate evaluates
+  # neither variable validations nor preconditions, so it does not see wiring
+  # errors — a registry not passed to a module, a count depending on an ARN that
+  # is unknown at plan time.
+  test:
+    name: test ${{ matrix.dir }}
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.discover.outputs.testable) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - run: terraform -chdir=${{ matrix.dir }} init -backend=false -input=false
+      - run: terraform -chdir=${{ matrix.dir }} test
+
+  lint:
+    name: tflint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+      - run: tflint --init
+      - run: tflint --recursive --config "$(pwd)/.tflint.hcl"
+
+  # Trivy's version is pinned like terraform-docs', and for the same reason: the
+  # check database grows between releases, so a floating version makes new findings
+  # appear on a commit that changed nothing. Updates happen by bumping
+  # `TRIVY_VERSION`, when there is time to read them.
+  security:
+    name: trivy config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v${{ env.TRIVY_VERSION }}
+          scan-type: config
+          scan-ref: .
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          trivy-config: trivy.yaml
+
+  # The binary is pinned to the same version used locally: `terraform-docs` changes
+  # its formatting between releases, and a different version here would turn the
+  # gate red over a difference that has nothing to do with the documentation.
+  docs:
+    name: terraform-docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install terraform-docs
+        run: |
+          curl -sSL "https://terraform-docs.io/dl/v${TERRAFORM_DOCS_VERSION}/terraform-docs-v${TERRAFORM_DOCS_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz -C /tmp terraform-docs
+          sudo install /tmp/terraform-docs /usr/local/bin/terraform-docs
+      - run: make docs
+      - name: generated READMEs must be up to date
+        run: git diff --exit-code -- modules
+
+  # Requires a test AWS account reachable via OIDC. Skips silently if the variable
+  # is not configured, so that forks and external PRs do not fail.
+  plan-examples:
+    name: plan ${{ matrix.dir }}
+    needs: discover
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.discover.outputs.examples) }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gate
+        run: |
+          if [ -n "${{ vars.CI_AWS_ROLE_ARN }}" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.gate.outputs.run == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.CI_AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+      - if: steps.gate.outputs.run == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - if: steps.gate.outputs.run == 'true'
+        run: terraform -chdir=${{ matrix.dir }} init -input=false
+      - if: steps.gate.outputs.run == 'true'
+        run: terraform -chdir=${{ matrix.dir }} plan -input=false -lock=false
