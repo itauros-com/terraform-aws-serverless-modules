@@ -74,3 +74,26 @@ run "invalid_object_ownership" {
 
   expect_failures = [var.object_ownership]
 }
+
+run "attach_policy_without_a_document" {
+  command = plan
+
+  variables {
+    attach_policy = true
+  }
+
+  expect_failures = [var.attach_policy]
+}
+
+run "document_with_attach_policy_disabled" {
+  command = plan
+
+  variables {
+    policy_json   = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    attach_policy = false
+  }
+
+  # The document would be dropped without a word, and the bucket would keep only the
+  # statements the module attaches on its own.
+  expect_failures = [var.attach_policy]
+}

@@ -203,7 +203,14 @@ variable "object_ownership" {
 
 variable "policy_json" {
   description = <<-EOT
-    The bucket's policy, as JSON.
+    Statements to add to the bucket's policy, as a JSON document.
+
+    They are **merged** with the ones the module always attaches — deny insecure
+    transport, require the latest TLS — into the single policy the bucket has. S3 stores
+    one document per bucket and every write replaces it whole, so a consumer that needs
+    its own statements passes them here instead of declaring a second
+    `aws_s3_bucket_policy` on the same bucket, which would overwrite this one with no
+    error from either side.
 
     The module does **not** create public buckets: the public access block is always
     on. To serve static web content you use [`modules/site`](../site), which puts
@@ -215,4 +222,29 @@ variable "policy_json" {
   EOT
   type        = string
   default     = null
+}
+
+variable "attach_policy" {
+  description = <<-EOT
+    Whether `policy_json` takes part in the bucket's policy. Derived from `policy_json`
+    when null, which is what almost every caller wants.
+
+    Declare it only when the document is not known at plan time because it references the
+    ARN of a resource that does not exist yet: an unknown value compared with `null` is
+    itself unknown, and the decision would be made on a value nobody can read at that
+    point. `modules/site` is in exactly that position — its statement is scoped to the
+    ARN of the distribution it is creating.
+  EOT
+  type        = bool
+  default     = null
+
+  validation {
+    condition     = var.attach_policy != true || var.policy_json != null
+    error_message = "`attach_policy` is true but `policy_json` is null: there is no document to attach."
+  }
+
+  validation {
+    condition     = var.attach_policy != false || var.policy_json == null
+    error_message = "`policy_json` is set but `attach_policy` is false: the document would be dropped without a word. Leave `attach_policy` unset to have it derived from `policy_json`."
+  }
 }

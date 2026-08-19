@@ -5,6 +5,14 @@ locals {
 
   uses_kms = var.encryption.kms_key_arn != null
 
+  # Whether the caller's document takes part in the bucket's policy.
+  #
+  # Derived from `policy_json` unless declared: a document that references the ARN of a
+  # resource not yet created is unknown at plan, and `!= null` on an unknown value is
+  # unknown too, so the caller in that position declares the intent instead of having it
+  # deduced from a value nobody can read yet. See modules/site.
+  attach_policy = coalesce(var.attach_policy, var.policy_json != null)
+
   has_notifications = (
     length(var.notifications.queues) > 0 ||
     length(var.notifications.topics) > 0 ||
@@ -101,11 +109,20 @@ module "s3" {
   lifecycle_rule = local.lifecycle_rules
   logging        = var.logging == null ? {} : { target_bucket = var.logging.target_bucket, target_prefix = coalesce(var.logging.target_prefix, "") }
 
-  attach_policy = var.policy_json != null
+  # The caller's document is **merged** with the statements below into the bucket's single
+  # policy, and does not replace it.
+  #
+  # S3 stores one policy document per bucket and every PutBucketPolicy replaces it whole,
+  # so a second `aws_s3_bucket_policy` on this bucket — here or in a consumer — would
+  # overwrite these statements in a non-deterministic order, exactly like a second
+  # notification configuration would. There is no error from either side: the deployed
+  # document is simply the one that applied last.
+  attach_policy = local.attach_policy
   policy        = var.policy_json
 
   # Rejects non-TLS traffic and obsolete TLS versions: two statements that have no
-  # downsides and that an audit always asks for.
+  # downsides and that an audit always asks for. They are also what makes the policy
+  # resource unconditional, and a duplicate policy in a consumer a silent conflict.
   attach_deny_insecure_transport_policy = true
   attach_require_latest_tls_policy      = true
 }

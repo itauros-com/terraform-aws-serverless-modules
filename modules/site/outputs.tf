@@ -66,3 +66,15 @@ output "spa_error_response_codes" {
   # the number of elements.
   value = tolist([for e in local.spa_error_responses : e.error_code])
 }
+
+output "bucket_policy_json" {
+  description = <<-EOT
+    The document this module contributes to the content bucket's policy: read access for
+    CloudFront through the OAC, scoped to this distribution with `AWS:SourceArn`.
+
+    `modules/bucket` merges it with the TLS statements into the single policy S3 allows per
+    bucket. It is exposed because the bucket's effective policy is not this document alone,
+    and because a second `aws_s3_bucket_policy` on that bucket would replace it in silence.
+  EOT
+  value       = local.bucket_policy_json
+}

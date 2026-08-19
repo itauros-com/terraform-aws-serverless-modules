@@ -8,9 +8,26 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_partition" {
+    defaults = {
+      partition          = "aws"
+      dns_suffix         = "amazonaws.com"
+      id                 = "aws"
+      reverse_dns_prefix = "com.amazonaws"
+    }
+  }
+
   mock_resource "aws_cloudfront_origin_access_control" {
     defaults = {
       id = "E1MOCKOAC00001"
+    }
+  }
+
+  # The bucket policy is scoped to this ARN: with the generated value the assertion would
+  # compare two unknowns and verify nothing.
+  mock_resource "aws_cloudfront_distribution" {
+    defaults = {
+      arn = "arn:aws:cloudfront::111122223333:distribution/E1MOCKDIST00001"
     }
   }
 
@@ -48,6 +65,42 @@ run "oac_linked_to_the_origin" {
   assert {
     condition     = one(aws_cloudfront_distribution.this.origin).domain_name == module.bucket.regional_domain_name
     error_message = "The origin must be the bucket's regional domain name."
+  }
+}
+
+run "bucket_policy_goes_through_the_bucket_module" {
+  # `apply`: the statement is scoped to the distribution's ARN, which is unknown at plan.
+  command = apply
+
+  # S3 keeps a single policy document per bucket. This module used to declare its own
+  # `aws_s3_bucket_policy` next to the one modules/bucket creates for the TLS statements, and
+  # the deployed document was whichever of the two applied last — the site answering 403 on
+  # everything, or the TLS enforcement quietly missing.
+  assert {
+    condition     = module.bucket.policy_json_attached == true
+    error_message = "The OAC statement must reach the bucket module, which merges it into the single policy."
+  }
+
+  assert {
+    condition     = one(jsondecode(output.bucket_policy_json).Statement).Principal.Service == "cloudfront.amazonaws.com"
+    error_message = "The only principal allowed to read the bucket must be the CloudFront service."
+  }
+
+  assert {
+    condition     = one(jsondecode(output.bucket_policy_json).Statement).Action == ["s3:GetObject"]
+    error_message = "CloudFront must only be allowed to read the objects."
+  }
+
+  assert {
+    condition     = one(jsondecode(output.bucket_policy_json).Statement).Resource == ["arn:aws:s3:::acme-prod-web/*"]
+    error_message = "The statement must apply to the bucket's objects, on the ARN computed from the name."
+  }
+
+  # Without the condition any distribution in any account could read the bucket through an
+  # OAC of its own.
+  assert {
+    condition     = one(jsondecode(output.bucket_policy_json).Statement).Condition.StringEquals["AWS:SourceArn"] == aws_cloudfront_distribution.this.arn
+    error_message = "The read access must be scoped to this distribution with AWS:SourceArn."
   }
 }
 

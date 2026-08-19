@@ -57,3 +57,14 @@ output "notification_ids" {
     functions = sort(keys(var.notifications.functions))
   }
 }
+
+output "policy_json_attached" {
+  description = <<-EOT
+    Whether the `policy_json` passed in takes part in the bucket's policy.
+
+    The bucket always has one — the TLS statements are unconditional — so this reports the
+    caller's document alone, which is the part that a duplicate `aws_s3_bucket_policy`
+    elsewhere would silently replace.
+  EOT
+  value       = local.attach_policy
+}

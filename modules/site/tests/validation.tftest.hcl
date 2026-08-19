@@ -4,6 +4,15 @@ mock_provider "aws" {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
     }
   }
+
+  mock_data "aws_partition" {
+    defaults = {
+      partition          = "aws"
+      dns_suffix         = "amazonaws.com"
+      id                 = "aws"
+      reverse_dns_prefix = "com.amazonaws"
+    }
+  }
 }
 
 variables {

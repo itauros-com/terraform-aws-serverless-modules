@@ -140,3 +140,44 @@ run "lifecycle_and_cors" {
     error_message = "The bucket with lifecycle and CORS rules must be created normally."
   }
 }
+
+run "no_caller_policy_by_default" {
+  command = plan
+
+  # The bucket always has a policy — the TLS statements are unconditional — so this reports
+  # the caller's document alone.
+  assert {
+    condition     = output.policy_json_attached == false
+    error_message = "With no policy_json the caller's document must not take part in the policy."
+  }
+}
+
+run "caller_policy_derived_from_the_document" {
+  command = plan
+
+  variables {
+    policy_json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+  }
+
+  assert {
+    condition     = output.policy_json_attached == true
+    error_message = "A policy_json that is known at plan must be attached without declaring anything else."
+  }
+}
+
+run "caller_policy_declared_explicitly" {
+  command = plan
+
+  # What a consumer whose document references the ARN of a resource it is creating does:
+  # modules/site scopes its statement to the ARN of the distribution it creates, unknown on
+  # the first plan.
+  variables {
+    policy_json   = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    attach_policy = true
+  }
+
+  assert {
+    condition     = output.policy_json_attached == true
+    error_message = "A declared attach_policy must be honoured."
+  }
+}

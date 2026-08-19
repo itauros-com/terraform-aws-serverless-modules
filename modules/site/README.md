@@ -47,6 +47,24 @@ with a policy that authorizes only `cloudfront.amazonaws.com` scoped to **this**
 
 The `origin_access_control_id` output exists to make exactly this inspectable.
 
+## One bucket, one policy
+
+The OAC statement is not a resource of this module: it is passed to `modules/bucket` through `policy_json`,
+which merges it with the TLS statements into the single policy S3 allows per bucket.
+
+It used to be an `aws_s3_bucket_policy` declared here, next to the one the bucket module creates. Two
+resources on the same document, each replacing the other: what was deployed was whichever applied last —
+either without the OAC access, and the distribution answers 403 on everything, or without the TLS
+enforcement, and the audit finding comes back. Neither Terraform nor AWS reports the conflict.
+
+Upgrading from a version that had the duplicate needs nothing on the caller's side. The module ships a
+`removed` block with `destroy = false`: the old resource is forgotten instead of destroyed, because
+destroying it would call `DeleteBucketPolicy` and wipe the document the surviving resource manages, and
+Terraform does not order a destroy against an update of another resource on the same API object. Expect one
+update on the bucket's policy, adding whichever set of statements the duplicate had been overwriting.
+
+The `bucket_policy_json` output exposes the document this module contributes.
+
 ## The SPA preset
 
 `spa = true` rewrites 403 and 404 to 200 on `/index.html`, so that client-side routing works on deep URLs.
@@ -112,8 +130,7 @@ exposes `distribution_id` and `distribution_arn` to build them there.
 | [aws_cloudfront_distribution.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution) | resource |
 | [aws_cloudfront_origin_access_control.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_origin_access_control) | resource |
 | [aws_route53_record.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route53_record) | resource |
-| [aws_s3_bucket_policy.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_policy) | resource |
-| [aws_iam_policy_document.bucket](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_partition.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/partition) | data source |
 
 ## Inputs
 
@@ -145,6 +162,7 @@ exposes `distribution_id` and `distribution_arn` to build them there.
 | ---- | ----------- |
 | <a name="output_bucket_arn"></a> [bucket\_arn](#output\_bucket\_arn) | ARN of the content bucket. |
 | <a name="output_bucket_name"></a> [bucket\_name](#output\_bucket\_name) | Name of the content bucket. It is the target of the `aws s3 sync` calls from CI. |
+| <a name="output_bucket_policy_json"></a> [bucket\_policy\_json](#output\_bucket\_policy\_json) | The document this module contributes to the content bucket's policy: read access for<br/>CloudFront through the OAC, scoped to this distribution with `AWS:SourceArn`.<br/><br/>`modules/bucket` merges it with the TLS statements into the single policy S3 allows per<br/>bucket. It is exposed because the bucket's effective policy is not this document alone,<br/>and because a second `aws_s3_bucket_policy` on that bucket would replace it in silence. |
 | <a name="output_bucket_registry_entry"></a> [bucket\_registry\_entry](#output\_bucket\_registry\_entry) | The bucket's registry entry, to give a function permission to write to it — for example<br/>to publish generated content.<br/><br/>    resources = { buckets = { site = module.site.bucket\_registry\_entry } } |
 | <a name="output_distribution_arn"></a> [distribution\_arn](#output\_distribution\_arn) | The distribution's ARN. |
 | <a name="output_distribution_id"></a> [distribution\_id](#output\_distribution\_id) | The distribution's ID. Needed for invalidations from CI. |

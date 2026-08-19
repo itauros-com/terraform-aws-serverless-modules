@@ -23,7 +23,43 @@ locals {
   ])
 
   has_aliases = length(var.aliases) > 0
+
+  # The bucket's ARN, computed from the name and not read from `module.bucket`.
+  #
+  # The policy below goes *into* that module, and reading the ARN back out of it would make
+  # the module's input depend on its own output. It happens to be acyclic today, but it
+  # stops being so the moment anything the bucket resource needs starts depending on the
+  # policy. S3 ARNs contain neither region nor account, so computing it is exact — the same
+  # reasoning as `modules/app`.
+  bucket_arn = format("arn:%s:s3:::%s", data.aws_partition.current.partition, local.site_name)
+
+  # The bucket stays private: the only access is CloudFront through the OAC, scoped to this
+  # distribution with `AWS:SourceArn`. It is the difference between a CDN you can bypass from
+  # the S3 endpoint and one you cannot.
+  #
+  # It is passed to modules/bucket, which merges it with the TLS statements into the single
+  # policy S3 allows per bucket. A separate `aws_s3_bucket_policy` here would race with that
+  # one and the deployed document would be whichever applied last — either without the OAC
+  # access, and the site answers 403 on everything, or without the TLS enforcement.
+  #
+  # Built with `jsonencode` and not with `aws_iam_policy_document`: the document is then a
+  # real value in the tests, where the data source is mocked and would assert nothing.
+  bucket_policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowCloudFrontOAC"
+      Effect    = "Allow"
+      Principal = { Service = "cloudfront.amazonaws.com" }
+      Action    = ["s3:GetObject"]
+      Resource  = [format("%s/*", local.bucket_arn)]
+      Condition = {
+        StringEquals = { "AWS:SourceArn" = aws_cloudfront_distribution.this.arn }
+      }
+    }]
+  })
 }
+
+data "aws_partition" "current" {}
 
 module "bucket" {
   source = "../bucket"
@@ -35,10 +71,17 @@ module "bucket" {
   versioning_enabled = var.bucket_versioning_enabled
   force_destroy      = var.bucket_force_destroy
 
-  # The policy does not go through here: it has to reference the distribution's ARN, which
-  # in turn needs the bucket's domain name. Passing it as an input would create a cycle
-  # between the two modules, so the policy is a separate resource further down this file.
-  policy_json = null
+  # The policy goes through here, so that the bucket keeps a single policy document.
+  #
+  # There is no cycle: the statement needs the distribution's ARN, the distribution needs the
+  # bucket's domain name, and the bucket's policy is a resource of its own — the bucket does
+  # not wait for it. The ARN in the statement is computed from the name for the reason above.
+  policy_json = local.bucket_policy_json
+
+  # Declared and not derived: the document embeds the ARN of a distribution that does not
+  # exist yet, so it is unknown on the first plan, and `policy_json != null` on an unknown
+  # value is unknown too.
+  attach_policy = true
 }
 
 # The distribution is written natively and not through CloudFront's upstream module. That
@@ -116,32 +159,23 @@ resource "aws_cloudfront_distribution" "this" {
   }
 }
 
-# The bucket stays private: the only access is CloudFront through the OAC, scoped to this
-# distribution with `AWS:SourceArn`. It is the difference between a CDN you can bypass from
-# the S3 endpoint and one you cannot.
-data "aws_iam_policy_document" "bucket" {
-  statement {
-    sid       = "AllowCloudFrontOAC"
-    effect    = "Allow"
-    actions   = ["s3:GetObject"]
-    resources = ["${module.bucket.arn}/*"]
+# The bucket policy used to be a resource of this module, alongside the one modules/bucket
+# creates for the TLS statements: two `aws_s3_bucket_policy` on the same bucket, each
+# replacing the other's document. It is now a single policy, and this block hands the old
+# resource over to it.
+#
+# `destroy = false` is the whole point. Destroying it would call DeleteBucketPolicy, which
+# removes the entire document — including the statements the surviving resource manages —
+# and Terraform does not order a destroy against an update of another resource on the same
+# API object. The site could be left with no policy at all, answering 403 on everything,
+# until the next apply. Forgetting the resource leaves the deployed document untouched and
+# the surviving policy converges on it in the same apply.
+removed {
+  from = aws_s3_bucket_policy.this
 
-    principals {
-      type        = "Service"
-      identifiers = ["cloudfront.amazonaws.com"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "AWS:SourceArn"
-      values   = [aws_cloudfront_distribution.this.arn]
-    }
+  lifecycle {
+    destroy = false
   }
-}
-
-resource "aws_s3_bucket_policy" "this" {
-  bucket = module.bucket.name
-  policy = data.aws_iam_policy_document.bucket.json
 }
 
 resource "aws_route53_record" "this" {

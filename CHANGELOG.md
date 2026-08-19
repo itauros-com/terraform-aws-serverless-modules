@@ -7,6 +7,53 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [0.1.1] — 2026-08-19
+
+### Fixed
+
+- `modules/site` no longer declares an `aws_s3_bucket_policy` of its own. S3 stores **a single policy
+  document per bucket** and every `PutBucketPolicy` replaces it whole, while `modules/bucket` always
+  creates a policy — its two TLS statements are unconditional. The two resources replaced each other in a
+  non-deterministic order, with neither Terraform nor AWS reporting the conflict: what stayed on the bucket
+  was the document of whichever applied last, so **either** CloudFront's read access through the OAC — and
+  the distribution answers 403 on everything — **or** the TLS enforcement. The OAC statement now goes in
+  through `policy_json`, and the upstream module merges it with its own into one document.
+
+  Expect **one update to the bucket's policy** on the first apply, adding back whichever statements the
+  duplicate had been overwriting. It is worth checking which ones those were: if the OAC statement was the
+  one winning in production, the bucket has been running without the deny on non-TLS traffic.
+
+  The statement's bucket ARN is computed from the name rather than read back from `module.bucket`, the same
+  way `modules/app` does it, so the module's input never depends on its own output.
+
+### Added
+
+- `modules/bucket` — `attach_policy`, to declare that `policy_json` takes part in the bucket's policy when
+  the document is not known at plan time because it references the ARN of a resource that does not exist
+  yet: an unknown value compared with `null` is unknown too. Null by default, i.e. derived from
+  `policy_json` as before. New `policy_json_attached` output.
+- `modules/site` — `bucket_policy_json` output, the document this module contributes to the bucket's
+  policy. The bucket's effective policy is no longer that document alone, and the output makes the
+  difference inspectable.
+
+### State addresses
+
+`module.<site>.aws_s3_bucket_policy.this` is gone. **Callers need no `moved` block**: `modules/site` ships
+a `removed` block with `lifecycle { destroy = false }`, so the resource is forgotten rather than destroyed.
+
+`destroy = false` is not caution. Destroying it would call `DeleteBucketPolicy`, which removes the entire
+document — including the statements the surviving resource manages — and Terraform does not order a destroy
+against an update of another resource on the same API object. The site could be left with no policy at all,
+answering 403 on everything, until the next apply.
+
+The `removed` block stays until the next MAJOR; for anyone starting from this version it is a no-op.
+
+### Notes
+
+The variable contract does not change incompatibly — `attach_policy` is additive and its default reproduces
+the previous behaviour — and the state migration is automatic. Hence a PATCH and not a MINOR, despite a
+state address disappearing.
+
 ## [0.1.0] — 2026-07-29
 
 First release. The variable contract should be considered stable but not yet proven in production:
