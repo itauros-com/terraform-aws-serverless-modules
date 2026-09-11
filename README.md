@@ -114,6 +114,7 @@ exists to correct.
 | [`security-group`](modules/security-group) | ✅ | Security group + VPC lookup by `Name` tag. |
 | [`http-api`](modules/http-api) | ✅ | HTTP API Gateway + stage + authorizer + routes + domain. |
 | [`site`](modules/site) | ✅ | Private S3 + CloudFront + OAC + Route53 + WAF hook. |
+| [`cdn`](modules/cdn) | ✅ | CloudFront over existing origins, routed by path, with signed URLs. |
 | [`registry`](modules/registry) | ✅ | ECR with immutable tags and lifecycle. |
 | [`schedule`](modules/schedule) | ✅ | EventBridge Scheduler with DLQ. |
 | [`observability`](modules/observability) | ✅ | Alarm topic, dashboard, log subscription. |

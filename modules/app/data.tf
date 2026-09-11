@@ -65,11 +65,23 @@ module "buckets" {
 
   versioning_enabled = each.value.versioning_enabled
   encryption         = { kms_key_arn = each.value.kms_key_arn }
-  force_destroy      = each.value.force_destroy
-  object_ownership   = each.value.object_ownership
-  cors_rules         = each.value.cors_rules
-  lifecycle_rules    = each.value.lifecycle_rules
-  logging            = each.value.logging
+
+  # The read statements of every distribution fronting this bucket, merged into the single
+  # policy S3 allows. They go through the bucket module rather than a separate
+  # `aws_s3_bucket_policy`, which would replace the document whole and silently drop the
+  # statements the module always attaches — the deny on insecure transport among them.
+  policy_json = try(local.bucket_policy_json[each.key], null)
+
+  # Declared and not derived: the document embeds the ARN of a distribution that does not
+  # exist yet, so it is unknown on the first plan, and `policy_json != null` on an unknown
+  # value is unknown too. The condition here reads only the shape of the inputs.
+  attach_policy = contains(keys(local.bucket_policy_json), each.key)
+
+  force_destroy    = each.value.force_destroy
+  object_ownership = each.value.object_ownership
+  cors_rules       = each.value.cors_rules
+  lifecycle_rules  = each.value.lifecycle_rules
+  logging          = each.value.logging
 
   notifications = {
     queues = {

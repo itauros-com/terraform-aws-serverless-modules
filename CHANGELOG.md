@@ -11,6 +11,39 @@ requires `moved` blocks on their side.
 
 ### Added
 
+- **`modules/cdn`** — a CloudFront distribution in front of origins it does **not** create, routed by
+  path. It is the case `modules/site` cannot express: `site` owns its bucket and serves it whole, so
+  one distribution means one bucket and one behavior.
+
+  Origins are S3 buckets reached through an Origin Access Control — one per origin, with the read
+  statement returned for the bucket's single policy — or custom HTTPS origins, an API Gateway among
+  them. Behaviors are a **list** and not a map: CloudFront stops at the first `path_pattern` that
+  matches, and a map would be ordered by key, turning a semantic order into an alphabetical accident.
+
+  `preset` resolves the cache policy, the origin request policy, the allowed methods and compression
+  together, because they only make sense together. `api` is there for one failure in particular: an
+  API served with the static cache policy never receives the `Authorization` header and answers 401
+  on everything, with nothing anywhere saying why. The managed policies are resolved by **name**, so
+  that a wrong one fails at plan instead of producing a distribution that misbehaves in silence.
+
+  Signed URLs through `key_groups`, which take public keys only — the private one belongs to whoever
+  signs. The guardrail that justifies the module: an origin declared `require_signed_urls` and served
+  by a behavior with no `trusted_key_groups` **stops the plan**. That mistake is invisible otherwise,
+  because `trusted_key_groups` belongs to the behavior and not to the distribution: a key group on the
+  default behavior protects nothing on a path that has a behavior of its own, the bucket stays private
+  the whole time, and the objects are served to anyone who knows a key.
+
+  Six more preconditions cover an unknown origin or key group, two behaviors sharing a `path_pattern`,
+  an origin no behavior serves, aliases with no certificate, a certificate outside us-east-1 and a
+  zone with no aliases.
+
+- `modules/app` — `cdns`, the composition of the above. Origins are declared by key: `bucket` resolves
+  to the name computed from the prefix, `http_api` to the host of the API's endpoint. The statements of
+  every distribution fronting the same bucket are **merged here** into the one policy S3 allows it —
+  the composition is the only place that sees every contributor, and they are merged as objects and
+  encoded once, because an encoded document embeds an ARN that is unknown at plan.
+
+
 - `modules/security-group` — `egress_prefix_list_rules` and `ingress_prefix_list_rules`, rules whose
   destination is an AWS **managed prefix list**. It is what reaches S3 or DynamoDB through a gateway
   endpoint, where the destination is not a CIDR anyone can write down. Without them the only way out of a

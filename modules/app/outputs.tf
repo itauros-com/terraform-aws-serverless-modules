@@ -168,3 +168,16 @@ output "resources" {
   EOT
   value       = local.resources
 }
+
+output "cdns" {
+  description = "ID, ARN and domain name of every CloudFront distribution, plus the IDs a signer needs."
+  value = {
+    for k, m in module.cdns : k => {
+      distribution_id  = m.distribution_id
+      distribution_arn = m.distribution_arn
+      domain_name      = m.domain_name
+      public_key_ids   = m.public_key_ids
+      behaviors        = m.behaviors
+    }
+  }
+}

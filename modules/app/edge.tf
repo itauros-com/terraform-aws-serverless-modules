@@ -123,3 +123,30 @@ module "schedules" {
   start_date                   = each.value.start_date
   end_date                     = each.value.end_date
 }
+
+module "cdns" {
+  source = "../cdn"
+
+  for_each = local.valid_cdns
+
+  prefix  = var.prefix
+  name    = each.key
+  comment = each.value.comment
+  tags    = merge(local.tags, each.value.tags)
+
+  origins = local.cdn_origins[each.key]
+
+  default_behavior = each.value.default_behavior
+  behaviors        = each.value.behaviors
+  key_groups       = each.value.key_groups
+
+  aliases                = each.value.aliases
+  certificate_arn        = each.value.certificate_arn
+  web_acl_arn            = each.value.web_acl_arn
+  zone_id                = each.value.zone_id
+  default_root_object    = each.value.default_root_object
+  custom_error_responses = each.value.custom_error_responses
+  price_class            = each.value.price_class
+  logging                = each.value.logging
+  wait_for_deployment    = each.value.wait_for_deployment
+}

@@ -552,3 +552,143 @@ run "prefix_list_egress_reaches_the_security_group" {
     error_message = "The security group with a prefix list rule must plan and resolve its VPC."
   }
 }
+
+# A distribution that aggregates an HTTP API and a private bucket under one domain: the case
+# `modules/site` does not cover, because `site` owns its bucket and serves it whole.
+run "cdn_resolves_origins_by_key" {
+  command = plan
+
+  variables {
+    cdns = {
+      edge = {
+        aliases         = ["edge.example.com"]
+        certificate_arn = "arn:aws:acm:us-east-1:111122223333:certificate/abc"
+
+        origins = {
+          app     = { http_api = "apigw" }
+          exports = { bucket = "documents", require_signed_urls = true }
+        }
+
+        key_groups = {
+          downloads = { public_keys = { current = { encoded_key = "MOCK" } } }
+        }
+
+        default_behavior = { origin = "app", preset = "api" }
+
+        behaviors = [
+          {
+            path_pattern       = "/exports/*"
+            origin             = "exports"
+            preset             = "private-files"
+            trusted_key_groups = ["downloads"]
+          },
+        ]
+      }
+    }
+  }
+
+  # The bucket resolves to its name and not to a domain read from `module.buckets`: the
+  # statement the distribution produces goes back into that bucket's policy, and reading
+  # anything out of the bucket module would close the loop.
+  assert {
+    condition     = local.cdn_origins["edge"]["exports"].bucket.name == "acme-prod-documents"
+    error_message = "A bucket origin must resolve to the name computed from the prefix."
+  }
+
+  # The API resolves on the `http` branch, with no bucket. The host itself is unknown at
+  # plan — it comes from an API that does not exist yet — so what is assertable here is the
+  # shape: an HTTP API must never end up as a bucket origin, where it would be given an OAC
+  # and a policy on a bucket that does not exist.
+  assert {
+    condition     = local.cdn_origins["edge"]["app"].bucket == null && local.cdn_origins["edge"]["app"].http != null
+    error_message = "An HTTP API must resolve to a custom origin, not a bucket one."
+  }
+
+  assert {
+    condition     = local.cdn_origins["edge"]["app"].http.protocol_policy == "https-only"
+    error_message = "An API origin must be reached over HTTPS only."
+  }
+}
+
+run "cdn_statements_reach_the_bucket_policy" {
+  command = plan
+
+  variables {
+    cdns = {
+      edge = {
+        origins          = { docs = { bucket = "documents" } }
+        default_behavior = { origin = "docs" }
+      }
+    }
+  }
+
+  # S3 keeps one policy document per bucket. The statement goes through the bucket module,
+  # which merges it with the TLS ones, instead of a second `aws_s3_bucket_policy` that would
+  # replace the document whole with neither Terraform nor AWS reporting the conflict.
+  assert {
+    condition     = contains(keys(local.bucket_policy_json), "documents")
+    error_message = "The distribution's read statement must reach the bucket it fronts."
+  }
+
+  # `attach_policy` is derived from the shape of the inputs and not from the document, which
+  # embeds an ARN that does not exist yet: it feeds a `count` and must be known at plan.
+  assert {
+    condition     = length(local.cdn_bucket_statements["documents"]) == 1
+    error_message = "One statement per distribution fronting the bucket."
+  }
+}
+
+run "two_distributions_on_one_bucket_merge" {
+  command = plan
+
+  variables {
+    cdns = {
+      edge = {
+        origins          = { docs = { bucket = "documents" } }
+        default_behavior = { origin = "docs" }
+      }
+      legacy = {
+        origins          = { docs = { bucket = "documents" } }
+        default_behavior = { origin = "docs" }
+      }
+    }
+  }
+
+  # The merge belongs to the composition: it is the only place that sees every contributor.
+  # Merged as objects and encoded once — a document already encoded embeds an ARN unknown at
+  # plan, and `jsondecode` on it yields something nobody can index into.
+  assert {
+    condition     = length(local.cdn_bucket_statements["documents"]) == 2
+    error_message = "Both distributions' statements must land in the bucket's single policy."
+  }
+}
+
+run "cdn_towards_a_nonexistent_bucket" {
+  command = plan
+
+  variables {
+    cdns = {
+      edge = {
+        origins          = { docs = { bucket = "nope" } }
+        default_behavior = { origin = "docs" }
+      }
+    }
+  }
+
+  expect_failures = [output.wiring]
+}
+
+run "cdn_towards_a_nonexistent_api" {
+  command = plan
+
+  variables {
+    cdns = {
+      edge = {
+        origins          = { app = { http_api = "nope" } }
+        default_behavior = { origin = "app" }
+      }
+    }
+  }
+
+  expect_failures = [output.wiring]
+}
