@@ -53,3 +53,35 @@ run "no_egress_allowed" {
   # legitimate but almost never intended, and the symptoms are timeouts.
   expect_failures = [output.id]
 }
+
+run "prefix_list_rule_without_ids" {
+  command = plan
+
+  variables {
+    vpc_id = "vpc-0123456789abcdef0"
+
+    egress_prefix_list_rules = [
+      { from_port = 443, to_port = 443, prefix_list_ids = [] },
+    ]
+  }
+
+  # An empty list would reach upstream as an empty string and produce a rule with no
+  # destination: allowed by the plan, useless in the account.
+  expect_failures = [var.egress_prefix_list_rules]
+}
+
+run "prefix_list_rule_with_a_security_group_id" {
+  command = plan
+
+  variables {
+    vpc_id = "vpc-0123456789abcdef0"
+
+    egress_prefix_list_rules = [
+      { from_port = 443, to_port = 443, prefix_list_ids = ["sg-0123456789abcdef0"] },
+    ]
+  }
+
+  # Confusing the two identifiers is the natural mistake: they are both opaque and both
+  # appear in egress rules.
+  expect_failures = [var.egress_prefix_list_rules]
+}

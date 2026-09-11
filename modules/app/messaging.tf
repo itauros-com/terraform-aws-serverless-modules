@@ -24,7 +24,10 @@ module "topics" {
   allow_publish_from = each.value.allow_publish_from
 
   alarms = {
-    actions = local.alarm_actions
+    enabled          = each.value.alarms.enabled
+    actions          = local.alarm_actions
+    failed_threshold = each.value.alarms.failed_threshold
+    failed_period    = each.value.alarms.failed_period
   }
 }
 
@@ -51,6 +54,11 @@ module "queues" {
   allow_send_from = concat(local.queue_bucket_sources[each.key], each.value.allow_send_from)
 
   alarms = {
-    actions = local.alarm_actions
+    enabled               = each.value.alarms.enabled
+    actions               = local.alarm_actions
+    age_threshold_seconds = each.value.alarms.age_threshold_seconds
+    age_period            = each.value.alarms.age_period
+    dlq_threshold         = each.value.alarms.dlq_threshold
+    dlq_period            = each.value.alarms.dlq_period
   }
 }

@@ -11,11 +11,13 @@ module "security_groups" {
   vpc_id   = each.value.vpc_id
   vpc_name = each.value.vpc_name
 
-  ingress_cidr_rules      = each.value.ingress_cidr_rules
-  ingress_source_sg_rules = each.value.ingress_source_sg_rules
-  ingress_self_rules      = each.value.ingress_self_rules
-  egress_cidr_rules       = each.value.egress_cidr_rules
-  egress_source_sg_rules  = each.value.egress_source_sg_rules
-  egress_self_rules       = each.value.egress_self_rules
-  allow_all_egress        = each.value.allow_all_egress
+  ingress_cidr_rules        = each.value.ingress_cidr_rules
+  ingress_source_sg_rules   = each.value.ingress_source_sg_rules
+  ingress_self_rules        = each.value.ingress_self_rules
+  ingress_prefix_list_rules = each.value.ingress_prefix_list_rules
+  egress_cidr_rules         = each.value.egress_cidr_rules
+  egress_source_sg_rules    = each.value.egress_source_sg_rules
+  egress_self_rules         = each.value.egress_self_rules
+  egress_prefix_list_rules  = each.value.egress_prefix_list_rules
+  allow_all_egress          = each.value.allow_all_egress
 }

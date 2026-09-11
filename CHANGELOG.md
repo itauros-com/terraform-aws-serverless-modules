@@ -7,6 +7,42 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [Unreleased]
+
+### Added
+
+- `modules/security-group` — `egress_prefix_list_rules` and `ingress_prefix_list_rules`, rules whose
+  destination is an AWS **managed prefix list**. It is what reaches S3 or DynamoDB through a gateway
+  endpoint, where the destination is not a CIDR anyone can write down. Without them the only way out of a
+  closed security group towards S3 is `0.0.0.0/0`, which opens the whole internet in order to reach one
+  service — and the symptom of the missing rule is not a denied permission but an `i/o timeout`, because
+  the packet leaves and nobody answers.
+
+  The contract takes a **list** of IDs where upstream wants a comma-separated string: a typo inside a
+  string reaches AWS as a prefix list that does not exist. Two validations reject an empty list and an ID
+  that is not a `pl-`, the mistake to expect being a security group ID. A prefix list rule counts as an
+  egress rule for the "no egress at all" precondition.
+
+- `modules/app` — `alarms` on `queues`, `topics` and `tables`, with `enabled` and the thresholds.
+
+  The composition used to pass those primitives only `alarms.actions`, so their alarms were on and there
+  was no way to turn them off from the caller. That contradicted what the library already promised
+  elsewhere: a migration of an existing configuration is supposed to be able to produce a plan with no
+  changes, and prove the translation faithful before anything new is switched on. It could be done for
+  functions and for the dashboard, but not for a queue, a topic or a table — and eleven alarms nobody
+  asked for yet are enough to hide the one diff that matters.
+
+  `actions` stays out of the caller's reach on purpose: the alarm topic's ARN is injected by the
+  composition, so an alarm that notifies nobody remains inexpressible.
+
+- `modules/app` — `egress_prefix_list_rules` and `ingress_prefix_list_rules` passed through to
+  `security_groups`.
+
+### Notes
+
+Additive to the variable contract: every new field has a default reproducing the previous behaviour, and
+no state address changes. Existing callers see no diff.
+
 ## [0.1.1] — 2026-08-19
 
 ### Fixed

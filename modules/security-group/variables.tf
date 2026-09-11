@@ -86,6 +86,35 @@ variable "ingress_self_rules" {
   default = []
 }
 
+variable "ingress_prefix_list_rules" {
+  description = <<-EOT
+    Ingress rules from managed prefix lists.
+
+    Same form as the egress ones, for the symmetric case: traffic arriving from a
+    service or from another VPC identified by a prefix list.
+  EOT
+  type = list(object({
+    from_port       = number
+    to_port         = number
+    protocol        = optional(string, "tcp")
+    prefix_list_ids = list(string)
+    description     = optional(string)
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for r in var.ingress_prefix_list_rules : length(r.prefix_list_ids) > 0])
+    error_message = "Every ingress prefix list rule must state at least one ID in `prefix_list_ids`."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for r in var.ingress_prefix_list_rules : [for id in r.prefix_list_ids : startswith(id, "pl-")]
+    ]))
+    error_message = "Prefix list IDs start with 'pl-'. A security group ID or a CIDR belongs in another rule type."
+  }
+}
+
 variable "egress_cidr_rules" {
   description = "Egress rules towards CIDR blocks. `cidr_blocks` accepts the special value `vpc`, as on ingress."
   type = list(object({
@@ -119,6 +148,52 @@ variable "egress_self_rules" {
     description = optional(string)
   }))
   default = []
+}
+
+variable "egress_prefix_list_rules" {
+  description = <<-EOT
+    Egress rules towards managed prefix lists.
+
+    It is what reaches an AWS service through a **gateway endpoint** — S3 and DynamoDB —
+    where the destination is not a CIDR you can write down: the addresses belong to the
+    service and AWS publishes them as a managed prefix list (`pl-...`, one per service and
+    per region).
+
+    Without it the only way out towards S3 from a closed security group is
+    `0.0.0.0/0`, which opens the whole internet to reach one service. The symptom of the
+    missing rule is not a denied permission: it is an `i/o timeout`, because the packet
+    leaves and nobody answers.
+
+    Usable only if the VPC has the gateway endpoint for that service: AWS rejects a rule
+    naming a managed prefix list that no route table in the VPC references.
+
+        egress_prefix_list_rules = [{
+          from_port       = 443
+          to_port         = 443
+          prefix_list_ids = ["pl-6da54004"] # com.amazonaws.eu-west-1.s3
+          description     = "HTTPS to S3 via the gateway endpoint"
+        }]
+  EOT
+  type = list(object({
+    from_port       = number
+    to_port         = number
+    protocol        = optional(string, "tcp")
+    prefix_list_ids = list(string)
+    description     = optional(string)
+  }))
+  default = []
+
+  validation {
+    condition     = alltrue([for r in var.egress_prefix_list_rules : length(r.prefix_list_ids) > 0])
+    error_message = "Every egress prefix list rule must state at least one ID in `prefix_list_ids`."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for r in var.egress_prefix_list_rules : [for id in r.prefix_list_ids : startswith(id, "pl-")]
+    ]))
+    error_message = "Prefix list IDs start with 'pl-'. A security group ID or a CIDR belongs in another rule type."
+  }
 }
 
 variable "allow_all_egress" {
