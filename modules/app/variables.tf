@@ -596,6 +596,118 @@ variable "sites" {
   default = {}
 }
 
+variable "cdns" {
+  description = <<-EOT
+    CloudFront distributions in front of the buckets and the HTTP APIs declared elsewhere in
+    this composition, routed by path.
+
+    It is the case [`modules/site`](../site) does not cover: `site` owns its bucket and
+    serves it whole, while a `cdn` fronts origins it does not create and picks between them
+    per path.
+
+        cdns = {
+          edge = {
+            aliases = ["api.example.com"]
+            origins = {
+              app     = { http_api = "apigw" }
+              exports = { bucket = "exports", require_signed_urls = true }
+            }
+            default_behavior = { origin = "app", preset = "api" }
+            behaviors = [
+              { path_pattern = "/exports/*", origin = "exports", preset = "private-files",
+                trusted_key_groups = ["downloads"] },
+            ]
+          }
+        }
+
+    The composition resolves `http_api` to the origin's host and `bucket` to the real bucket
+    name, and feeds the read statement back into that bucket's single policy.
+  EOT
+  type = map(object({
+    comment = optional(string)
+
+    origins = map(object({
+      # Exactly one of the two, by key.
+      bucket   = optional(string)
+      http_api = optional(string)
+
+      origin_path         = optional(string)
+      require_signed_urls = optional(bool, false)
+
+      protocol_policy   = optional(string, "https-only")
+      read_timeout      = optional(number, 30)
+      keepalive_timeout = optional(number, 5)
+      custom_headers    = optional(map(string), {})
+    }))
+
+    default_behavior = object({
+      origin                     = string
+      preset                     = optional(string, "static")
+      cache_policy_id            = optional(string)
+      origin_request_policy_id   = optional(string)
+      response_headers_policy_id = optional(string)
+      allowed_methods            = optional(list(string))
+      viewer_protocol_policy     = optional(string, "redirect-to-https")
+      compress                   = optional(bool)
+      trusted_key_groups         = optional(list(string), [])
+      function_associations      = optional(map(string), {})
+    })
+
+    behaviors = optional(list(object({
+      path_pattern               = string
+      origin                     = string
+      preset                     = optional(string, "static")
+      cache_policy_id            = optional(string)
+      origin_request_policy_id   = optional(string)
+      response_headers_policy_id = optional(string)
+      allowed_methods            = optional(list(string))
+      viewer_protocol_policy     = optional(string, "redirect-to-https")
+      compress                   = optional(bool)
+      trusted_key_groups         = optional(list(string), [])
+      function_associations      = optional(map(string), {})
+    })), [])
+
+    key_groups = optional(map(object({
+      comment = optional(string)
+      public_keys = map(object({
+        encoded_key = string
+        comment     = optional(string)
+      }))
+    })), {})
+
+    aliases             = optional(list(string), [])
+    certificate_arn     = optional(string)
+    web_acl_arn         = optional(string)
+    zone_id             = optional(string)
+    default_root_object = optional(string)
+    price_class         = optional(string, "PriceClass_100")
+    wait_for_deployment = optional(bool, false)
+    custom_error_responses = optional(list(object({
+      error_code            = number
+      response_code         = optional(number)
+      response_page_path    = optional(string)
+      error_caching_min_ttl = optional(number)
+    })), [])
+    logging = optional(object({
+      bucket          = string
+      prefix          = optional(string)
+      include_cookies = optional(bool, false)
+    }))
+
+    tags = optional(map(string), {})
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue(flatten([
+      for c in values(var.cdns) : [
+        for o in values(c.origins) : (o.bucket != null) != (o.http_api != null)
+      ]
+    ]))
+    error_message = "Every origin must state either `bucket` or `http_api`, not both and not neither."
+  }
+}
+
 variable "registries" {
   description = "ECR repositories for the container functions."
   type = map(object({
