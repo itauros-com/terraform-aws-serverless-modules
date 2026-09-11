@@ -15,6 +15,24 @@ variable "description" {
   default     = null
 }
 
+variable "role_name" {
+  description = <<-EOT
+    Name of the role EventBridge Scheduler assumes. Derived from the schedule's name when
+    null, which is what you want unless a role already exists under another name.
+
+    The derived name is shortened when `<prefix>-<name>-scheduler` runs past the 64
+    characters IAM allows, keeping 55 characters and appending 8 hex of the full name's
+    hash. Set this explicitly to choose the short name yourself.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.role_name == null || length(coalesce(var.role_name, "")) <= 64
+    error_message = "An IAM role name stops at 64 characters."
+  }
+}
+
 variable "tags" {
   description = "Tags applied to the resources the module creates. EventBridge Scheduler schedules do not support tags: they are applied to the IAM role."
   type        = map(string)

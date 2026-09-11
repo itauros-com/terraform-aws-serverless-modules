@@ -7,6 +7,24 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [Unreleased]
+
+### Fixed
+
+- `modules/schedule` — the role's name no longer runs past the 64 characters IAM allows. A schedule is
+  the resource most likely to overflow: `<project>-<environment>-<what it does>` plus the `-scheduler`
+  suffix reaches 66 on a name as ordinary as `accessi-process-expirations-daily`, and the provider
+  rejected it at **apply**, after the plan had been reviewed and approved.
+
+  The name is now shortened deterministically — 55 characters, then 8 hex of the full name's hash.
+  Plain truncation would collide between two schedules sharing a long prefix, which is exactly what a
+  `<project>-<environment>-` convention produces, and the collision would surface as an
+  `EntityAlreadyExists` on whichever applied second. `role_name` is there to choose the short name
+  yourself.
+
+  Found while planning a real configuration onto the library: the schedules were the one thing that
+  stopped the plan outright.
+
 ## [0.1.2] — 2026-09-11
 
 ### Added
