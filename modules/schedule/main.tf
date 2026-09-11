@@ -3,6 +3,23 @@ locals {
 
   tags = merge(var.tags, { Name = local.schedule_name })
 
+  role_base = format("%s-scheduler", local.schedule_name)
+
+  # IAM role names stop at 64 characters, and a schedule's name is the one most likely to
+  # run past it: `<project>-<environment>-<what it does>` plus the `-scheduler` suffix
+  # reaches 66 on a name as ordinary as `accessi-process-expirations-daily`. Left alone,
+  # the provider rejects it at **apply**, after the plan has been reviewed and approved.
+  #
+  # So it is shortened deterministically: 55 characters of the name, then 8 hex of the
+  # full name's SHA-1. Plain truncation would collide between two schedules sharing a long
+  # prefix — which is exactly what a `<project>-<environment>-` convention produces — and
+  # the collision would surface as an EntityAlreadyExists on whichever applied second.
+  role_name = var.role_name != null ? var.role_name : (
+    length(local.role_base) <= 64 ? local.role_base : format(
+      "%s-%s", substr(local.role_base, 0, 55), substr(sha1(local.role_base), 0, 8)
+    )
+  )
+
   # The declared type wins over the inferred one: inferring it from a computed ARN makes
   # it unknown at plan time, and with it the only permission granted to the role.
   target_type = var.target.type != null ? var.target.type : (
@@ -43,7 +60,7 @@ data "aws_iam_policy_document" "assume" {
 }
 
 resource "aws_iam_role" "this" {
-  name               = format("%s-scheduler", local.schedule_name)
+  name               = local.role_name
   description        = format("EventBridge Scheduler role for %s", local.schedule_name)
   assume_role_policy = data.aws_iam_policy_document.assume.json
   tags               = local.tags
