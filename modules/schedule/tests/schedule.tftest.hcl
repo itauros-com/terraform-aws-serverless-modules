@@ -134,3 +134,61 @@ run "idempotent_schedule_without_a_dlq" {
     error_message = "An idempotent schedule must be able to exist without a DLQ, by declaring it."
   }
 }
+
+# `<prefix>-<name>-scheduler` reaches 66 characters on a name as ordinary as
+# `accessi-process-expirations-daily`. Left alone the provider rejects it at apply, after
+# the plan has been reviewed — which is the worst moment to find out.
+run "long_role_name_is_shortened_to_fit_iam" {
+  command = plan
+
+  variables {
+    prefix = "powerflow-smartflow-dev"
+    name   = "accessi-process-expirations-daily"
+  }
+
+  assert {
+    condition     = length(local.role_name) <= 64
+    error_message = "An IAM role name stops at 64 characters."
+  }
+
+  # Plain truncation would collide between two schedules sharing a long prefix, and the
+  # collision surfaces as an EntityAlreadyExists on whichever applies second.
+  assert {
+    condition     = endswith(local.role_name, substr(sha1(local.role_base), 0, 8))
+    error_message = "A shortened name must carry the hash that keeps it unique."
+  }
+
+  assert {
+    condition     = startswith(local.role_name, "powerflow-smartflow-dev-accessi-process-")
+    error_message = "A shortened name must stay recognisable."
+  }
+}
+
+run "short_role_name_is_left_alone" {
+  command = plan
+
+  variables {
+    prefix = "acme-prod"
+    name   = "cleanup"
+  }
+
+  assert {
+    condition     = local.role_name == "acme-prod-cleanup-scheduler"
+    error_message = "A name that fits must not be touched."
+  }
+}
+
+run "role_name_can_be_chosen" {
+  command = plan
+
+  variables {
+    prefix    = "powerflow-smartflow-dev"
+    name      = "accessi-process-expirations-daily"
+    role_name = "powerflow-dev-expirations-scheduler"
+  }
+
+  assert {
+    condition     = local.role_name == "powerflow-dev-expirations-scheduler"
+    error_message = "An explicit name must win over the derived one."
+  }
+}
