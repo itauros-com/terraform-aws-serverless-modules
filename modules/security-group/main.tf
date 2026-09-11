@@ -25,13 +25,29 @@ locals {
     })
   ]
 
+  # Upstream reads `prefix_list_ids` with a `lookup` and splits it on commas: it wants a
+  # string, not a list. The contract here stays a list — a typo inside a string would
+  # reach AWS as a prefix list ID that does not exist — and the join happens at the edge.
+  ingress_prefix_list_rules = [
+    for r in var.ingress_prefix_list_rules : merge(r, {
+      prefix_list_ids = join(",", r.prefix_list_ids)
+    })
+  ]
+
+  egress_prefix_list_rules = [
+    for r in var.egress_prefix_list_rules : merge(r, {
+      prefix_list_ids = join(",", r.prefix_list_ids)
+    })
+  ]
+
   effective_egress_rules = var.allow_all_egress ? ["all-all"] : []
 
   no_egress_at_all = (
     !var.allow_all_egress &&
     length(var.egress_cidr_rules) == 0 &&
     length(var.egress_source_sg_rules) == 0 &&
-    length(var.egress_self_rules) == 0
+    length(var.egress_self_rules) == 0 &&
+    length(var.egress_prefix_list_rules) == 0
   )
 }
 
@@ -66,9 +82,11 @@ module "sg" {
   ingress_with_cidr_blocks              = local.ingress_cidr_rules
   ingress_with_source_security_group_id = var.ingress_source_sg_rules
   ingress_with_self                     = var.ingress_self_rules
+  ingress_with_prefix_list_ids          = local.ingress_prefix_list_rules
 
   egress_rules                         = local.effective_egress_rules
   egress_with_cidr_blocks              = local.egress_cidr_rules
   egress_with_source_security_group_id = var.egress_source_sg_rules
   egress_with_self                     = var.egress_self_rules
+  egress_with_prefix_list_ids          = local.egress_prefix_list_rules
 }

@@ -69,7 +69,17 @@ variable "tables" {
     }), {})
 
     kms_key_arn = optional(string)
-    tags        = optional(map(string), {})
+
+    # `actions` is not here: the alarm topic's ARN is injected by the composition.
+    alarms = optional(object({
+      enabled            = optional(bool, true)
+      throttle_threshold = optional(number, 1)
+      throttle_period    = optional(number, 300)
+      error_threshold    = optional(number, 1)
+      error_period       = optional(number, 300)
+    }), {})
+
+    tags = optional(map(string), {})
   }))
   default = {}
 }
@@ -219,6 +229,14 @@ variable "topics" {
       source_account = optional(string)
     })), [])
 
+    # `actions` is not here: the alarm topic's ARN is injected by the composition, so
+    # that an alarm notifying nobody cannot be configured.
+    alarms = optional(object({
+      enabled          = optional(bool, true)
+      failed_threshold = optional(number, 1)
+      failed_period    = optional(number, 300)
+    }), {})
+
     tags = optional(map(string), {})
   }))
   default = {}
@@ -260,6 +278,15 @@ variable "queues" {
       source_arn     = optional(string)
       source_account = optional(string)
     })), [])
+
+    # `actions` is not here, for the same reason as on the topics.
+    alarms = optional(object({
+      enabled               = optional(bool, true)
+      age_threshold_seconds = optional(number, 300)
+      age_period            = optional(number, 300)
+      dlq_threshold         = optional(number, 1)
+      dlq_period            = optional(number, 300)
+    }), {})
 
     tags = optional(map(string), {})
   }))
@@ -321,6 +348,24 @@ variable "security_groups" {
       to_port     = number
       protocol    = optional(string, "tcp")
       description = optional(string)
+    })), [])
+
+    ingress_prefix_list_rules = optional(list(object({
+      from_port       = number
+      to_port         = number
+      protocol        = optional(string, "tcp")
+      prefix_list_ids = list(string)
+      description     = optional(string)
+    })), [])
+
+    # The way out towards S3 and DynamoDB through a gateway endpoint, where the
+    # destination is a managed prefix list and not a CIDR. See modules/security-group.
+    egress_prefix_list_rules = optional(list(object({
+      from_port       = number
+      to_port         = number
+      protocol        = optional(string, "tcp")
+      prefix_list_ids = list(string)
+      description     = optional(string)
     })), [])
 
     allow_all_egress = optional(bool, true)

@@ -416,3 +416,139 @@ run "minimal_application" {
     error_message = "With no declared buckets the registry must be empty."
   }
 }
+
+# The composition used to pass only `actions` to queues, topics and tables: their alarms were
+# on and there was no way to turn them off from here. It matters when migrating an existing
+# configuration onto the library, where the first plan has to come out at zero changes to prove
+# the translation is faithful — and a plan full of alarms nobody asked for yet hides the diffs
+# that are real.
+run "messaging_and_table_alarms_are_on_by_default" {
+  command = plan
+
+  variables {
+    secrets         = {}
+    buckets         = {}
+    security_groups = {}
+    functions       = {}
+    http_apis       = {}
+    registries      = {}
+    schedules       = {}
+    sites           = {}
+
+    tables = {
+      tenants = {
+        attributes             = { pk = "S" }
+        hash_key               = "pk"
+        deletion_protection    = false
+        point_in_time_recovery = { enabled = false }
+      }
+    }
+    topics = { operations = { to_queues = { events = {} } } }
+    queues = { events = {} }
+  }
+
+  # 3 on the table (read throttle, write throttle, system errors), 1 on the topic (failed
+  # notifications), 2 on the queue (age of the oldest message, DLQ depth).
+  assert {
+    condition     = length(output.alarm_arns) == 6
+    error_message = "By default every primitive must raise its own alarms."
+  }
+}
+
+run "messaging_and_table_alarms_can_be_disabled" {
+  command = plan
+
+  variables {
+    secrets         = {}
+    buckets         = {}
+    security_groups = {}
+    functions       = {}
+    http_apis       = {}
+    registries      = {}
+    schedules       = {}
+    sites           = {}
+
+    tables = {
+      tenants = {
+        attributes             = { pk = "S" }
+        hash_key               = "pk"
+        deletion_protection    = false
+        point_in_time_recovery = { enabled = false }
+        alarms                 = { enabled = false }
+      }
+    }
+    topics = {
+      operations = {
+        to_queues = { events = {} }
+        alarms    = { enabled = false }
+      }
+    }
+    queues = {
+      events = { alarms = { enabled = false } }
+    }
+  }
+
+  assert {
+    condition     = length(output.alarm_arns) == 0
+    error_message = "`alarms.enabled = false` must reach queues, topics and tables."
+  }
+}
+
+run "messaging_alarm_thresholds_are_configurable" {
+  command = plan
+
+  variables {
+    secrets         = {}
+    buckets         = {}
+    security_groups = {}
+    functions       = {}
+    http_apis       = {}
+    registries      = {}
+    schedules       = {}
+    sites           = {}
+    tables          = {}
+
+    topics = { operations = { to_queues = { events = {} } } }
+    queues = {
+      events = {
+        alarms = { age_threshold_seconds = 900 }
+      }
+    }
+  }
+
+  # The threshold on the age of the oldest message is the one that gets tuned per queue: 300
+  # seconds is right for an interactive path and far too tight for a nightly batch.
+  assert {
+    condition     = length(output.alarm_arns) == 3
+    error_message = "Changing a threshold must not change how many alarms exist."
+  }
+}
+
+run "prefix_list_egress_reaches_the_security_group" {
+  command = plan
+
+  variables {
+    security_groups = {
+      lambda = {
+        vpc_name         = "acme-prod-vpc"
+        allow_all_egress = false
+
+        egress_source_sg_rules = [
+          { from_port = 5432, to_port = 5432, source_security_group_id = "sg-0123456789abcdef0" },
+        ]
+
+        # The way out towards S3 through the gateway endpoint. Without it a Lambda in the VPC
+        # fails on S3 with an i/o timeout, an error that talks about the network and not about
+        # permissions.
+        egress_prefix_list_rules = [
+          { from_port = 443, to_port = 443, prefix_list_ids = ["pl-6da54004"], description = "HTTPS to S3" },
+        ]
+      }
+    }
+  }
+
+  assert {
+    condition     = output.security_groups["lambda"].vpc_id == "vpc-0123456789abcdef0"
+    error_message = "The security group with a prefix list rule must plan and resolve its VPC."
+  }
+}

@@ -26,7 +26,12 @@ module "tables" {
   encryption             = { kms_key_arn = each.value.kms_key_arn }
 
   alarms = {
-    actions = local.alarm_actions
+    enabled            = each.value.alarms.enabled
+    actions            = local.alarm_actions
+    throttle_threshold = each.value.alarms.throttle_threshold
+    throttle_period    = each.value.alarms.throttle_period
+    error_threshold    = each.value.alarms.error_threshold
+    error_period       = each.value.alarms.error_period
   }
 }
 
