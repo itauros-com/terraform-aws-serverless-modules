@@ -7,7 +7,7 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
-## [Unreleased]
+## [0.1.2] — 2026-09-11
 
 ### Added
 
@@ -75,6 +75,11 @@ requires `moved` blocks on their side.
 
 Additive to the variable contract: every new field has a default reproducing the previous behaviour, and
 no state address changes. Existing callers see no diff.
+
+A PATCH and not a MINOR despite a whole new module, for the same reason as 0.1.1: nothing existing
+changes shape. `modules/cdn` is new surface nobody is calling yet, the new fields on `modules/app` and
+`modules/security-group` all default to the previous behaviour, and no state address moves. Upgrading
+from 0.1.1 produces no diff until a caller writes something that uses the additions.
 
 ## [0.1.1] — 2026-08-19
 
