@@ -7,7 +7,7 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
-## [Unreleased]
+## [0.1.3] — 2026-09-12
 
 ### Fixed
 
@@ -24,6 +24,11 @@ requires `moved` blocks on their side.
 
   Found while planning a real configuration onto the library: the schedules were the one thing that
   stopped the plan outright.
+
+### Notes
+
+A PATCH: the fix only changes what happened when the plan already failed. A name that fits is
+untouched, so no existing role is renamed and no state address moves.
 
 ## [0.1.2] — 2026-09-11
 
