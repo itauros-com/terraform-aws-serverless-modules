@@ -107,7 +107,22 @@ module "s3" {
 
   cors_rule      = local.cors_rules
   lifecycle_rule = local.lifecycle_rules
-  logging        = var.logging == null ? {} : { target_bucket = var.logging.target_bucket, target_prefix = coalesce(var.logging.target_prefix, "") }
+  # Two distinct reasons for this shape, and neither survives a simplification.
+  #
+  # `null` and not `{}` when there is no logging: the s3-bucket module gates the resource
+  # on `var.logging != null`, and since 5.16.0 that variable is an object with a required
+  # `target_bucket`. An empty object satisfied it while it was untyped; now it fails the
+  # type check and takes down **every** plan of this module, logging configured or not.
+  #
+  # The prefix falls back to `""` and not to `null`: the module hands `target_prefix`
+  # straight to `aws_s3_bucket_logging`, where the provider requires it. Leaving the
+  # optional attribute unset would fail a plan that asks for logging without a prefix.
+  # The fallback is a conditional and not `coalesce`, which rejects the empty string
+  # it would have to return here.
+  logging = var.logging == null ? null : {
+    target_bucket = var.logging.target_bucket
+    target_prefix = var.logging.target_prefix == null ? "" : var.logging.target_prefix
+  }
 
   # The caller's document is **merged** with the statements below into the bucket's single
   # policy, and does not replace it.
