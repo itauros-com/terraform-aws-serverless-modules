@@ -7,6 +7,30 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [0.1.4] — 2026-09-15
+
+### Fixed
+
+- `modules/bucket` — server access logging no longer breaks the plan, in either of its two states.
+
+  With no logging configured the module passed `{}` to `terraform-aws-modules/s3-bucket`. That was
+  valid while the upstream `logging` variable was untyped; since **5.16.0** it is an object with a
+  required `target_bucket`, and `~> 5.0` resolves to it. The result was `map has no element for
+  required attribute "target_bucket"` on **every** plan of the module — and of `modules/app` and
+  `modules/site`, which build on it — whether or not logging was in use. The value is now `null`,
+  which is what the upstream module gates its logging resource on.
+
+  With logging configured and no prefix the fallback `coalesce(target_prefix, "")` failed too:
+  `coalesce` rejects the empty string it was asked to return. The prefix still has to reach
+  `aws_s3_bucket_logging`, where the provider requires it, so the fallback is now a conditional.
+
+  Found from a consumer, where the first failure stopped a plan that had nothing to do with logging.
+
+### Notes
+
+A PATCH: it only changes what happened when the plan already failed. No configuration that planned
+before changes shape, and no state address moves.
+
 ## [0.1.3] — 2026-09-12
 
 ### Fixed
