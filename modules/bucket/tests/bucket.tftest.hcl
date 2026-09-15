@@ -141,6 +141,22 @@ run "lifecycle_and_cors" {
   }
 }
 
+run "server_access_logging" {
+  command = plan
+
+  variables {
+    logging = { target_bucket = "acme-prod-logs" }
+  }
+
+  # `logging` reaches the s3-bucket module as a typed object, so what this run guards is
+  # the plan itself: a value rebuilt here rather than passed through stopped type-checking
+  # against that variable and failed every plan of this module, logging or not.
+  assert {
+    condition     = output.static_arn == "arn:aws:s3:::acme-prod-documents"
+    error_message = "A bucket that logs towards another one must be created normally."
+  }
+}
+
 run "no_caller_policy_by_default" {
   command = plan
 
