@@ -7,6 +7,39 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [0.2.0] — 2026-10-20
+
+### Fixed
+
+- `modules/function` — one asynchronous invocation configuration per function, not two.
+
+  The upstream lambda module creates two `aws_lambda_function_event_invoke_config` by default, one on
+  the current version and one on the unqualified alias. This module does not publish versions, so the
+  current version is `$LATEST` and the two resources are the same object in AWS. Created in parallel,
+  one of the two calls is refused — `409 ResourceConflictException: … could not be updated due to a
+  concurrent update operation` — and the apply stops halfway. Whether it does depends on the order of
+  the calls: a consumer applied fine with the pair in its state, the next one failed on seven functions
+  out of nine. Even when the apply passes, destroying either resource deletes the configuration the
+  other still believes in.
+
+  Only the configuration on the unqualified function is created now: the one that applies to
+  invocations by function name or ARN, which is how API Gateway, EventBridge Scheduler and S3 invoke.
+
+### Breaking
+
+- **State address removed.** With `async` enabled — the default — every function has an instance
+  `module.lambda.aws_lambda_function_event_invoke_config.this["current_version"]` that is no longer in
+  the configuration. Left alone, the plan destroys it, and with it the object the remaining
+  `this["unqualified_alias"]` manages. Remove it from the state **before** upgrading:
+
+  ```bash
+  terraform state list \
+    | grep 'aws_lambda_function_event_invoke_config.this\["current_version"\]' \
+    | xargs -I{} terraform state rm '{}'
+  ```
+
+  After that the plan is "No changes". Nothing changes in AWS. The variable contract is unchanged.
+
 ## [0.1.4] — 2026-09-15
 
 ### Fixed
