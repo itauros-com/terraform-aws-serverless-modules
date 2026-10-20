@@ -166,11 +166,20 @@ module "lambda" {
 
   # Asynchronous invocation: without an on-failure destination an event that runs
   # out of attempts disappears without a trace.
-  create_async_event_config    = var.async.enabled
-  maximum_retry_attempts       = var.async.enabled ? var.async.maximum_retry_attempts : null
-  maximum_event_age_in_seconds = var.async.enabled ? var.async.maximum_event_age_in_seconds : null
-  destination_on_failure       = local.async_on_failure_arn
-  attach_async_event_policy    = local.has_async_target
+  #
+  # One configuration, on the unqualified function. The upstream module creates two by
+  # default, one on the current version and one on the unqualified alias; but this module
+  # does not publish versions, so the current version is `$LATEST` and both resources
+  # are the same object in AWS. Two resources on one object conflict when they are created
+  # together (409, "concurrent update operation"), and destroying either deletes the
+  # configuration the other one still believes in.
+  create_async_event_config                   = var.async.enabled
+  create_current_version_async_event_config   = false
+  create_unqualified_alias_async_event_config = true
+  maximum_retry_attempts                      = var.async.enabled ? var.async.maximum_retry_attempts : null
+  maximum_event_age_in_seconds                = var.async.enabled ? var.async.maximum_event_age_in_seconds : null
+  destination_on_failure                      = local.async_on_failure_arn
+  attach_async_event_policy                   = local.has_async_target
 
   # Capability-derived IAM
   attach_policy_json = local.has_policy
