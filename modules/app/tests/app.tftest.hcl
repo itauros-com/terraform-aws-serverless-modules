@@ -44,6 +44,14 @@ mock_provider "aws" {
       cidr_block = "10.20.0.0/16"
     }
   }
+
+  mock_data "aws_subnet" {
+    defaults = {
+      id                = "subnet-0123456789abcdef0"
+      vpc_id            = "vpc-0123456789abcdef0"
+      availability_zone = "eu-west-1a"
+    }
+  }
 }
 
 # The shape of this configuration reproduces the real tfvars the library grew out of: an API
@@ -706,6 +714,123 @@ run "cdn_towards_a_nonexistent_bucket" {
   }
 
   expect_failures = [output.wiring]
+}
+
+# A Glue job started by a function, the shape the job module was written for: the function
+# holds `start` on the job and receives its name; the job resolves its arguments from the
+# same registry and reaches a database inside the VPC.
+run "glue_job_started_by_a_function" {
+  command = plan
+
+  variables {
+    buckets = {
+      documents    = {}
+      glue-scripts = {}
+      glue-temp    = {}
+    }
+
+    glue_jobs = {
+      reconcile = {
+        script       = { bucket = "glue-scripts", key = "scripts/reconcile_etl_job.py" }
+        temp_dir     = { bucket = "glue-temp" }
+        glue_version = "4.0"
+
+        network = {
+          subnet_id           = "subnet-0123456789abcdef0"
+          security_group_keys = ["lambda"]
+          jdbc                = { url = "jdbc:postgresql://db.internal:5432/app", secret = "mongodb" }
+        }
+
+        args_from = {
+          "--target_bucket" = { bucket = "documents" }
+          "--DYNAMO_TABLE"  = { table = "tenants" }
+        }
+
+        grants = {
+          "bucket/documents" = ["read", "write"]
+          "table/tenants"    = ["read"]
+          "secret/mongodb"   = ["read"]
+        }
+      }
+    }
+
+    functions = {
+      api = {
+        package  = { local_path = "fixtures/dummy.zip" }
+        env_from = { RECONCILE_JOB = { glue_job = "reconcile" } }
+        grants   = { "glue_job/reconcile" = ["start"] }
+      }
+    }
+
+    # The fixture's API, registry and schedule reference functions this run replaces.
+    http_apis  = {}
+    registries = {}
+    schedules  = {}
+  }
+
+  # Computed from the prefix, not read from the job's module: the registry is one value and
+  # the job resolves its own references through it.
+  assert {
+    condition     = local.resources.glue_jobs["reconcile"].arn == "arn:aws:glue:eu-west-1:111122223333:job/acme-prod-reconcile"
+    error_message = "A Glue job must enter the registry with the ARN computed from the prefix."
+  }
+
+  assert {
+    condition     = output.glue_jobs["reconcile"].name == "acme-prod-reconcile"
+    error_message = "The job's name must join prefix and key."
+  }
+
+  # The connection is wired through the module's own group plus the ones named by key.
+  assert {
+    condition     = length(local.glue_job_network["reconcile"].security_group_ids) == 1
+    error_message = "A security group named by key must reach the job's connection."
+  }
+
+  assert {
+    condition     = local.glue_job_alarms_enabled
+    error_message = "A job with its notification on must open the alarm topic to EventBridge."
+  }
+}
+
+run "schedule_towards_a_glue_job" {
+  command = plan
+
+  variables {
+    buckets = {
+      documents    = {}
+      glue-scripts = {}
+    }
+
+    glue_jobs = {
+      reconcile = {
+        script = { bucket = "glue-scripts", key = "scripts/reconcile_etl_job.py" }
+      }
+    }
+
+    schedules = {
+      nightly = {
+        expression        = "cron(0 2 * * ? *)"
+        target_glue_job   = "reconcile"
+        arguments         = { "--mode" = "nightly" }
+        dead_letter_queue = "ingest"
+      }
+    }
+  }
+
+  assert {
+    condition     = output.wiring.schedule_targets["nightly"] == "glue"
+    error_message = "A schedule naming a Glue job by key must have a glue target."
+  }
+}
+
+run "no_glue_jobs_no_eventbridge_on_the_alarm_topic" {
+  command = plan
+
+  # An application without jobs keeps the alarm topic policy it always had.
+  assert {
+    condition     = !local.glue_job_alarms_enabled
+    error_message = "Without Glue jobs the alarm topic must not let EventBridge publish."
+  }
 }
 
 run "cdn_towards_a_nonexistent_api" {

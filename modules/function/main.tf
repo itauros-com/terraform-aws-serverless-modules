@@ -4,22 +4,25 @@ locals {
   tags = merge(var.tags, { Name = local.function_name })
 
   registry = {
-    buckets = var.resources.buckets
-    tables  = var.resources.tables
-    topics  = var.resources.topics
-    queues  = var.resources.queues
-    secrets = var.resources.secrets
+    buckets   = var.resources.buckets
+    tables    = var.resources.tables
+    topics    = var.resources.topics
+    queues    = var.resources.queues
+    secrets   = var.resources.secrets
+    glue_jobs = var.resources.glue_jobs
   }
 
   # The attribute injected by default, per resource type. It reproduces what the
-  # application normally expects: the name for buckets, tables and secrets, the ARN
-  # for topics (the SDKs publish by ARN), the URL for queues.
+  # application normally expects: the name for buckets, tables, secrets and Glue jobs
+  # (StartJobRun takes the job's name), the ARN for topics (the SDKs publish by ARN),
+  # the URL for queues.
   env_from_types = {
-    bucket = { registry = "buckets", default_attr = "name" }
-    table  = { registry = "tables", default_attr = "name" }
-    topic  = { registry = "topics", default_attr = "arn" }
-    queue  = { registry = "queues", default_attr = "url" }
-    secret = { registry = "secrets", default_attr = "name" }
+    bucket   = { registry = "buckets", default_attr = "name" }
+    table    = { registry = "tables", default_attr = "name" }
+    topic    = { registry = "topics", default_attr = "arn" }
+    queue    = { registry = "queues", default_attr = "url" }
+    secret   = { registry = "secrets", default_attr = "name" }
+    glue_job = { registry = "glue_jobs", default_attr = "name" }
   }
 
   env_from_parsed = {
@@ -30,9 +33,10 @@ locals {
         r.topic != null ? "topic" :
         r.queue != null ? "queue" :
         r.secret != null ? "secret" :
+        r.glue_job != null ? "glue_job" :
         null
       )
-      name = coalesce(r.bucket, r.table, r.topic, r.queue, r.secret, "")
+      name = coalesce(r.bucket, r.table, r.topic, r.queue, r.secret, r.glue_job, "")
       attr = r.attr
     }
   }

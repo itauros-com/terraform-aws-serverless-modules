@@ -2,7 +2,7 @@
 
 A complete serverless application described with [`modules/app`](../../modules/app): four functions, an API
 with an authorizer, two topics fanning in onto one queue, a bucket with notifications, a table with a GSI
-and TTL, a static site, an ECR repository, a schedule and observability.
+and TTL, a Glue job started by a function, a static site, an ECR repository, a schedule and observability.
 
 The root config is **one call**. All the rest of the file is the description of the application: it is the
 shape the project repos will have.
@@ -35,6 +35,11 @@ depend on the queue and the function not depend on the bucket.
 **What every role received.** `function_iam` says, for each function, whether it has the network
 permissions, tracing, the asynchronous destination and an application policy. Here `network` is `false` on
 all four: none of them is in a VPC.
+
+**How a function starts a Glue job.** `files` declares the job like any other resource: `"glue_job/reconcile"
+= ["start"]` in `grants`, `RECONCILE_JOB = { glue_job = "reconcile" }` in `env_from`. The job resolves its
+own arguments from the same registry — `--target_bucket` receives the bucket's real name — and a failed run
+is notified on the alarm topic.
 
 ## Trying a wiring error
 

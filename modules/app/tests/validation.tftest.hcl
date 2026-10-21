@@ -44,6 +44,14 @@ mock_provider "aws" {
       cidr_block = "10.20.0.0/16"
     }
   }
+
+  mock_data "aws_subnet" {
+    defaults = {
+      id                = "subnet-0123456789abcdef0"
+      vpc_id            = "vpc-0123456789abcdef0"
+      availability_zone = "eu-west-1a"
+    }
+  }
 }
 
 variables {
@@ -277,6 +285,38 @@ run "schedule_with_the_dlq_of_a_nonexistent_queue" {
         expression        = "rate(1 day)"
         target_function   = "api"
         dead_letter_queue = "nonexistent"
+      }
+    }
+  }
+
+  expect_failures = [output.wiring]
+}
+
+run "schedule_towards_a_nonexistent_glue_job" {
+  command = plan
+
+  variables {
+    schedules = {
+      nightly = {
+        expression                = "rate(1 day)"
+        target_glue_job           = "reconcil"
+        allow_missing_dead_letter = true
+      }
+    }
+  }
+
+  expect_failures = [output.wiring]
+}
+
+run "glue_job_with_a_nonexistent_security_group" {
+  command = plan
+
+  variables {
+    buckets = { glue-scripts = {} }
+    glue_jobs = {
+      reconcile = {
+        script  = { bucket = "glue-scripts", key = "scripts/reconcile.py" }
+        network = { subnet_id = "subnet-0123456789abcdef0", security_group_keys = ["glue"] }
       }
     }
   }

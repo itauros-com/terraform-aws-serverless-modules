@@ -112,6 +112,25 @@ run "valid_capability_but_on_the_wrong_service" {
   expect_failures = [output.policy_json]
 }
 
+run "read_on_a_glue_job" {
+  command = plan
+
+  # A job is started, not read: `read` would have to mean either nothing or GetJob, and
+  # neither is what the caller wants.
+  variables {
+    resources = {
+      glue_jobs = {
+        reconcile = { arn = "arn:aws:glue:eu-west-1:111122223333:job/acme-prod-reconcile", name = "acme-prod-reconcile" }
+      }
+    }
+    grants = {
+      "glue_job/reconcile" = ["read"]
+    }
+  }
+
+  expect_failures = [output.policy_json]
+}
+
 run "extra_statement_with_an_invalid_effect" {
   command = plan
 

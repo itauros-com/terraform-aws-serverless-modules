@@ -1,3 +1,7 @@
+data "aws_partition" "current" {}
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
 locals {
   schedule_name = var.prefix == null || var.prefix == "" ? var.name : format("%s-%s", var.prefix, var.name)
 
@@ -25,10 +29,35 @@ locals {
   target_type = var.target.type != null ? var.target.type : (
     var.target.function_arn != null ? "lambda" :
     var.target.queue_arn != null ? "sqs" :
+    var.target.glue_job_name != null ? "glue" :
     "sfn"
   )
 
-  target_arn = coalesce(var.target.function_arn, var.target.queue_arn, var.target.state_machine_arn)
+  # A Glue job is declared by name, which is what StartJobRun takes, and its ARN — the one
+  # the role's permission is scoped to — is derived from it. The format is fixed and the
+  # region and account are this provider's, so the computation is exact.
+  glue_job_arn = var.target.glue_job_name == null ? null : format(
+    "arn:%s:glue:%s:%s:job/%s",
+    data.aws_partition.current.partition,
+    data.aws_region.current.region,
+    data.aws_caller_identity.current.account_id,
+    var.target.glue_job_name,
+  )
+
+  # The resource the role acts on.
+  target_arn = coalesce(var.target.function_arn, var.target.queue_arn, var.target.state_machine_arn, local.glue_job_arn)
+
+  # What Scheduler calls. Glue is not a templated target: it is reached through the
+  # universal one, which calls the API action named in the ARN with the input as the
+  # request body.
+  invocation_arn = local.target_type == "glue" ? format(
+    "arn:%s:scheduler:::aws-sdk:glue:startJobRun", data.aws_partition.current.partition
+  ) : local.target_arn
+
+  invocation_input = local.target_type == "glue" ? jsonencode(merge(
+    { JobName = var.target.glue_job_name },
+    var.target.arguments == null ? {} : { Arguments = var.target.arguments },
+  )) : var.target.input
 
   # One action per target type, not a generic permission: this schedule's role can only
   # do the one thing it exists for.
@@ -36,6 +65,7 @@ locals {
     lambda = ["lambda:InvokeFunction"]
     sqs    = ["sqs:SendMessage"]
     sfn    = ["states:StartExecution"]
+    glue   = ["glue:StartJobRun"]
   }
 
   needs_dead_letter_warning = var.dead_letter_arn == null && !var.allow_missing_dead_letter
@@ -111,9 +141,9 @@ resource "aws_scheduler_schedule" "this" {
   }
 
   target {
-    arn      = local.target_arn
+    arn      = local.invocation_arn
     role_arn = aws_iam_role.this.arn
-    input    = var.target.input
+    input    = local.invocation_input
 
     retry_policy {
       maximum_retry_attempts       = var.retry.maximum_retry_attempts

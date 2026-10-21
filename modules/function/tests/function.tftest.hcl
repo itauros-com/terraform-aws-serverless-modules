@@ -68,6 +68,9 @@ variables {
     secrets = {
       mongodb = { arn = "arn:aws:secretsmanager:eu-west-1:111122223333:secret:acme-prod-mongodb-AbCdEf", name = "acme-prod-mongodb" }
     }
+    glue_jobs = {
+      reconcile = { arn = "arn:aws:glue:eu-west-1:111122223333:job/acme-prod-reconcile", name = "acme-prod-reconcile" }
+    }
   }
 }
 
@@ -116,19 +119,26 @@ run "env_from_resolves_the_right_attribute_per_type" {
       EVENTS_ARN  = { topic = "operations" }
       EMAILS_URL  = { queue = "emails" }
       MONGO_NAME  = { secret = "mongodb" }
+      RECONCILE   = { glue_job = "reconcile" }
     }
 
     grants = {
-      "bucket/documents" = ["read"]
-      "table/tenants"    = ["read"]
-      "topic/operations" = ["publish"]
-      "queue/emails"     = ["publish"]
-      "secret/mongodb"   = ["read"]
+      "bucket/documents"   = ["read"]
+      "table/tenants"      = ["read"]
+      "topic/operations"   = ["publish"]
+      "queue/emails"       = ["publish"]
+      "secret/mongodb"     = ["read"]
+      "glue_job/reconcile" = ["start"]
     }
   }
 
   # The per-type defaults reproduce what the application expects: name for buckets,
-  # tables and secrets; ARN for topics; URL for queues.
+  # tables, secrets and Glue jobs; ARN for topics; URL for queues.
+  assert {
+    condition     = output.environment_variables["RECONCILE"] == "acme-prod-reconcile"
+    error_message = "A Glue job reference must resolve to the job's name, which is what StartJobRun takes."
+  }
+
   assert {
     condition     = output.environment_variables["DOCS_BUCKET"] == "acme-prod-documents"
     error_message = "A bucket reference must resolve to the bucket's name."

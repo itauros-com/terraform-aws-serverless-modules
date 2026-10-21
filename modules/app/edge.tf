@@ -104,9 +104,11 @@ module "schedules" {
   target = {
     function_arn      = try(module.functions[each.value.target_function].arn, null)
     queue_arn         = try(module.queues[each.value.target_queue].arn, null)
+    glue_job_name     = try(module.glue_jobs[each.value.target_glue_job].name, null)
     state_machine_arn = each.value.target_state_machine_arn
     input             = each.value.input
     message_group_id  = each.value.message_group_id
+    arguments         = each.value.arguments
 
     # The type is known here, where the target is declared by key: passing it makes it readable
     # in the plan which permission the schedule's role receives.

@@ -23,6 +23,11 @@ output "function_names" {
   value       = { for k, f in module.app.functions : k => f.name }
 }
 
+output "glue_job_names" {
+  description = "The Glue jobs' names. The scripts go to the `glue-scripts` bucket, at the key each job declares."
+  value       = { for k, j in module.app.glue_jobs : k => j.name }
+}
+
 output "wiring" {
   description = <<-EOT
     The graph of resolved references. It is the output to read in a review: it says which routes

@@ -1,4 +1,5 @@
 data "aws_partition" "current" {}
+data "aws_region" "current" {}
 
 locals {
   tags = var.tags
@@ -28,14 +29,37 @@ locals {
     }
   }
 
-  # The registry passed to every function. The table, topic, queue and secret entries come
-  # from the modules that create them; the bucket ones are computed.
+  # ----------------------------------------------------------------------------
+  # The Glue jobs enter the registry the same way, computed from the prefix.
+  #
+  # The registry is one value, and a job receives it to resolve its own references: an
+  # entry read from `module.glue_jobs` would make the registry depend on the module that
+  # depends on the registry. Glue job ARNs carry region and account, both this provider's,
+  # and the format is fixed, so the computation is exact here too.
+  # ----------------------------------------------------------------------------
+  glue_job_names = { for k in keys(var.glue_jobs) : k => format("%s-%s", var.prefix, k) }
+
+  glue_job_registry = {
+    for k, name in local.glue_job_names : k => {
+      arn = format(
+        "arn:%s:glue:%s:%s:job/%s",
+        data.aws_partition.current.partition, data.aws_region.current.region, data.aws_caller_identity.current.account_id, name,
+      )
+      name        = name
+      url         = null
+      kms_key_arn = null
+    }
+  }
+
+  # The registry passed to every function and job. The table, topic, queue and secret
+  # entries come from the modules that create them; the bucket and job ones are computed.
   resources = {
-    buckets = local.bucket_registry
-    tables  = { for k, m in module.tables : k => m.registry_entry }
-    topics  = { for k, m in module.topics : k => m.registry_entry }
-    queues  = { for k, m in module.queues : k => m.registry_entry }
-    secrets = { for k, m in module.secrets : k => m.registry_entry }
+    buckets   = local.bucket_registry
+    tables    = { for k, m in module.tables : k => m.registry_entry }
+    topics    = { for k, m in module.topics : k => m.registry_entry }
+    queues    = { for k, m in module.queues : k => m.registry_entry }
+    secrets   = { for k, m in module.secrets : k => m.registry_entry }
+    glue_jobs = local.glue_job_registry
   }
 
   # ----------------------------------------------------------------------------
@@ -124,6 +148,7 @@ locals {
     for k, s in var.schedules : k => (
       s.target_function != null ? "lambda" :
       s.target_queue != null ? "sqs" :
+      s.target_glue_job != null ? "glue" :
       "sfn"
     )
   }
@@ -135,7 +160,16 @@ locals {
     for k, s in var.schedules : k => s
     if(s.target_function == null || contains(keys(var.functions), coalesce(s.target_function, "x"))) &&
     (s.target_queue == null || contains(keys(var.queues), coalesce(s.target_queue, "x"))) &&
+    (s.target_glue_job == null || contains(keys(var.glue_jobs), coalesce(s.target_glue_job, "x"))) &&
     (s.dead_letter_queue == null || contains(keys(var.queues), coalesce(s.dead_letter_queue, "x")))
+  }
+
+  # Same pattern as the functions' security groups.
+  glue_job_security_group_ids = {
+    for jk, j in var.glue_jobs : jk => j.network == null ? [] : [
+      for sk in j.network.security_group_keys : module.security_groups[sk].id
+      if contains(keys(var.security_groups), sk)
+    ]
   }
 
   # ----------------------------------------------------------------------------
@@ -299,9 +333,19 @@ locals {
       if s.target_queue != null && !contains(keys(var.queues), coalesce(s.target_queue, "x"))
     ],
     [
+      for sk, s in var.schedules : format("schedules['%s'].target_glue_job references the Glue job '%s', which is not in `glue_jobs`", sk, s.target_glue_job)
+      if s.target_glue_job != null && !contains(keys(var.glue_jobs), coalesce(s.target_glue_job, "x"))
+    ],
+    [
       for sk, s in var.schedules : format("schedules['%s'].dead_letter_queue references the queue '%s', which is not in `queues`", sk, s.dead_letter_queue)
       if s.dead_letter_queue != null && !contains(keys(var.queues), coalesce(s.dead_letter_queue, "x"))
     ],
+    flatten([
+      for jk, j in var.glue_jobs : [
+        for sk in try(j.network.security_group_keys, []) : format("glue_jobs['%s'].network.security_group_keys references the security group '%s', which is not in `security_groups`", jk, sk)
+        if !contains(keys(var.security_groups), sk)
+      ]
+    ]),
     flatten([
       for rk, r in var.registries : [
         for fk in r.lambda_read_access_functions : format("registries['%s'].lambda_read_access_functions references the function '%s', which is not in `functions`", rk, fk)

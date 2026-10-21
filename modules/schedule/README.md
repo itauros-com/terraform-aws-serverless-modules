@@ -45,6 +45,12 @@ The role receives **a single action**, the one matching the target type:
 | `function_arn` | `lambda:InvokeFunction` |
 | `queue_arn` | `sqs:SendMessage` |
 | `state_machine_arn` | `states:StartExecution` |
+| `glue_job_name` | `glue:StartJobRun` |
+
+A Glue job is not one of Scheduler's templated targets: it is reached through the universal target
+`aws-sdk:glue:startJobRun`, with the request body as input. The module builds that body — the job's name
+and the run's `arguments` — and scopes the permission to the job's ARN, derived from the name. That is why
+a Glue target is given by name, and why `input` does not apply to it.
 
 With a `dead_letter_arn`, `sqs:SendMessage` on that queue is added. Without that permission the DLQ is
 configured but Scheduler cannot write to it: the failed events are lost all the same, and the configuration
@@ -84,8 +90,11 @@ makes up for it on its own, you declare `allow_missing_dead_letter = true`: it i
 | [aws_iam_role.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
 | [aws_iam_role_policy.target](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [aws_scheduler_schedule.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/scheduler_schedule) | resource |
+| [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
 | [aws_iam_policy_document.assume](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 | [aws_iam_policy_document.target](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_partition.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/partition) | data source |
+| [aws_region.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/region) | data source |
 
 ## Inputs
 
@@ -93,7 +102,7 @@ makes up for it on its own, you declare `allow_missing_dead_letter = true`: it i
 | ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_expression"></a> [expression](#input\_expression) | Scheduling expression: `rate(1 hour)`, `cron(0 8 * * ? *)` or<br/>`at(2026-12-31T23:00:00)`.<br/><br/>Note that Scheduler's cron format has **six fields** and requires the `?` character in<br/>one of day-of-month and day-of-week: a five-field cron expression copied from crontab<br/>is rejected. | `string` | n/a | yes |
 | <a name="input_name"></a> [name](#input\_name) | The schedule's name. If `prefix` is set the final name is `<prefix>-<name>`. | `string` | n/a | yes |
-| <a name="input_target"></a> [target](#input\_target) | The invocation's destination. State **exactly one** of `function_arn`, `queue_arn` and<br/>`state_machine_arn`: the module generates the IAM permission matching the type, so the<br/>type is declared and not inferred.<br/><br/>    target = {<br/>      function\_arn = module.cleanup.arn<br/>      input        = jsonencode({ job = "cleanup" })<br/>    } | <pre>object({<br/>    function_arn      = optional(string)<br/>    queue_arn         = optional(string)<br/>    state_machine_arn = optional(string)<br/>    input             = optional(string)<br/>    message_group_id  = optional(string)<br/><br/>    # Redundant with respect to which ARN is set, but not superfluous: the ARNs come from<br/>    # resources not yet created and are unknown at plan time, so inferring the type from<br/>    # them makes the only permission granted to the role unknown too. With the type<br/>    # declared the policy is readable in the plan.<br/>    type = optional(string)<br/>  })</pre> | n/a | yes |
+| <a name="input_target"></a> [target](#input\_target) | The invocation's destination. State **exactly one** of `function_arn`, `queue_arn`,<br/>`state_machine_arn` and `glue_job_name`: the module generates the IAM permission<br/>matching the type, so the type is declared and not inferred.<br/><br/>    target = {<br/>      function\_arn = module.cleanup.arn<br/>      input        = jsonencode({ job = "cleanup" })<br/>    }<br/><br/>A Glue job is named rather than given by ARN, because the name is what StartJobRun<br/>takes; the module derives the ARN the role's permission is scoped to. The run's<br/>arguments go in `arguments`, not in `input`: the module builds the request body.<br/><br/>    target = {<br/>      glue\_job\_name = module.reconcile.name<br/>      arguments     = { "--mode" = "nightly" }<br/>    } | <pre>object({<br/>    function_arn      = optional(string)<br/>    queue_arn         = optional(string)<br/>    state_machine_arn = optional(string)<br/>    glue_job_name     = optional(string)<br/>    input             = optional(string)<br/>    message_group_id  = optional(string)<br/><br/>    # Glue only: the run's arguments, overriding the job's defaults for this run.<br/>    arguments = optional(map(string))<br/><br/>    # Redundant with respect to which ARN is set, but not superfluous: the ARNs come from<br/>    # resources not yet created and are unknown at plan time, so inferring the type from<br/>    # them makes the only permission granted to the role unknown too. With the type<br/>    # declared the policy is readable in the plan.<br/>    type = optional(string)<br/>  })</pre> | n/a | yes |
 | <a name="input_allow_missing_dead_letter"></a> [allow\_missing\_dead\_letter](#input\_allow\_missing\_dead\_letter) | Allows creating the schedule without `dead_letter_arn`.<br/><br/>It is for idempotent schedules that are re-run on the next cycle anyway, where a single<br/>lost invocation has no consequences. It is a choice to be declared, not a default. | `bool` | `false` | no |
 | <a name="input_dead_letter_arn"></a> [dead\_letter\_arn](#input\_dead\_letter\_arn) | The SQS queue where invocations that did not succeed after the expected attempts end<br/>up.<br/><br/>Without it, a scheduled invocation that fails **disappears without a trace**: there is<br/>no log, no metric telling which execution was missed, and the first signal is that the<br/>work was not done. The module reports it if it is missing. | `string` | `null` | no |
 | <a name="input_description"></a> [description](#input\_description) | The schedule's description. | `string` | `null` | no |
@@ -116,6 +125,6 @@ makes up for it on its own, you declare `allow_missing_dead_letter = true`: it i
 | <a name="output_name"></a> [name](#output\_name) | The schedule's name, already prefixed. |
 | <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | ARN of the role Scheduler assumes to invoke the target. |
 | <a name="output_role_name"></a> [role\_name](#output\_role\_name) | The role's name. It derives from the schedule and not from the group, so two schedules in the same group do not collide. |
-| <a name="output_target_arn"></a> [target\_arn](#output\_target\_arn) | The target's ARN. |
-| <a name="output_target_type"></a> [target\_type](#output\_target\_type) | The detected target type: `lambda`, `sqs` or `sfn`. It determines the only action granted to the role. |
+| <a name="output_target_arn"></a> [target\_arn](#output\_target\_arn) | The target's ARN — for a Glue job the job's, derived from its name, not the universal target Scheduler calls. |
+| <a name="output_target_type"></a> [target\_type](#output\_target\_type) | The detected target type: `lambda`, `sqs`, `sfn` or `glue`. It determines the only action granted to the role. |
 <!-- END_TF_DOCS -->

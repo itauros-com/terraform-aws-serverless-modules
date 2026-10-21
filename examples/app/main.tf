@@ -76,6 +76,19 @@ module "app" {
         }
       }
     }
+
+    # CI copies the Glue scripts here; the job reads its own and nothing else.
+    glue-scripts = {
+      force_destroy = true
+    }
+
+    glue-temp = {
+      force_destroy = true
+
+      lifecycle_rules = [
+        { id = "scratch", expiration = { days = 7 } }
+      ]
+    }
   }
 
   secrets = {
@@ -146,13 +159,16 @@ module "app" {
         TENANTS_TABLE    = { table = "tenants" }
         OPERATIONS_TOPIC = { topic = "operations" }
         MONGO_SECRET     = { secret = "mongodb" }
+        RECONCILE_JOB    = { glue_job = "reconcile" }
       }
 
+      # `start` on the job: StartJobRun, and the calls to follow the run and stop it.
       grants = {
-        "bucket/documents" = ["read", "write"]
-        "table/tenants"    = ["read", "write"]
-        "topic/operations" = ["publish"]
-        "secret/mongodb"   = ["read"]
+        "bucket/documents"   = ["read", "write"]
+        "table/tenants"      = ["read", "write"]
+        "topic/operations"   = ["publish"]
+        "secret/mongodb"     = ["read"]
+        "glue_job/reconcile" = ["start"]
       }
 
       # Escape hatch for the services outside the capability table.
@@ -205,6 +221,38 @@ module "app" {
 
       event_sources = {
         ingest = { queue = "ingest", batch_size = 5, function_response_types = ["ReportBatchItemFailures"] }
+      }
+    }
+  }
+
+  # ----------------------------------------------------------------------------
+  # Glue jobs
+  #
+  # Started on demand by `files`. The arguments name the resources by key, like a
+  # function's `env_from`: a typo stops the plan instead of reaching the script.
+  # ----------------------------------------------------------------------------
+
+  glue_jobs = {
+    reconcile = {
+      description = "Reconciles the documents with the tenants"
+      script      = { bucket = "glue-scripts", key = "scripts/reconcile_etl_job.py" }
+      temp_dir    = { bucket = "glue-temp" }
+
+      args = {
+        "--ENV"                 = var.environment
+        "--job-bookmark-option" = "job-bookmark-disable"
+      }
+
+      args_from = {
+        "--target_bucket" = { bucket = "documents" }
+        "--DYNAMO_TABLE"  = { table = "tenants" }
+        "--SECRET_NAME"   = { secret = "mongodb" }
+      }
+
+      grants = {
+        "bucket/documents" = ["read", "write"]
+        "table/tenants"    = ["read"]
+        "secret/mongodb"   = ["read"]
       }
     }
   }
