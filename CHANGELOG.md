@@ -7,6 +7,48 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [0.3.0] — 2026-10-21
+
+### Added
+
+- `modules/glue-job` — AWS Glue jobs, on the principles of `modules/function`.
+
+  The script is a key in a bucket of the registry, uploaded by CI; the role reads that one object and
+  the temp dir's prefix, not the buckets. `args` and `args_from` are a job's `env` and `env_from`: a
+  reference resolves by key with the same table, and a wrong key stops the plan. Permissions come from
+  `grants` on top of `AWSGlueServiceRole`. `network` creates a `NETWORK` or `JDBC` connection with a
+  security group carrying the self-referencing ingress Glue requires; a JDBC connection holds the
+  secret's name, never a password, and the plan stops if the job cannot read that secret. Observability
+  is on by default and can be turned off flag by flag: the job's own log group with a retention,
+  metrics, job insights, and an EventBridge rule notifying runs that end `FAILED`, `TIMEOUT` or `ERROR`.
+
+  Its defaults differ from Glue's where Glue's are the expensive ones: one hour of timeout instead of
+  two days, no retries, two `G.1X` workers.
+
+- `modules/grants` — the `glue_job` type, with the `start` capability: `StartJobRun`, `GetJobRun`,
+  `GetJobRuns`, `BatchStopJobRun`. `resources.glue_jobs` in the registry.
+- `modules/function` — `{ glue_job = "<key>" }` in `env_from`, resolving to the job's name.
+- `modules/schedule` — `target.glue_job_name`, through Scheduler's universal target
+  `glue:startJobRun`, with the run's `arguments`.
+- `modules/app` — `glue_jobs`, entering the registry with an ARN computed from the prefix like the
+  buckets; `schedules[*].target_glue_job` and `arguments`. The alarm topic lets `events` publish when
+  some job notifies through it.
+- `modules/cdn` — uploads through the distribution. A bucket origin declares `upload_paths`, object key
+  patterns like `pending/*`, and the module adds a second statement: `s3:PutObject` on those keys only,
+  scoped to the distribution like the read one. The origin must be `require_signed_urls`, and a behavior
+  serving it must allow `PUT`; the plan stops otherwise. The statement is in `bucket_policy_json` and in
+  a new output, `bucket_upload_statements`; `modules/app` merges it into the bucket's single policy and
+  takes `upload_paths` on its `cdns` origins.
+
+### Notes
+
+A MINOR: everything is additive. No variable changes meaning, no state address moves, and a
+configuration without Glue jobs or `upload_paths` plans exactly as before.
+
+A composition that merges `modules/cdn`'s `bucket_policy_statements` by hand, outside `modules/app`,
+must merge `bucket_upload_statements` too, or the uploads will answer 403. `bucket_policy_json` already
+carries both.
+
 ## [0.2.0] — 2026-10-20
 
 ### Fixed
