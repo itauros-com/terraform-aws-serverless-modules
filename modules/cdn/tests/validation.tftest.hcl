@@ -250,3 +250,63 @@ run "regional_web_acl" {
 
   expect_failures = [var.web_acl_arn]
 }
+
+# ------------------------------------------------------------------------------
+# Uploads
+# ------------------------------------------------------------------------------
+
+run "uploads_without_signed_urls" {
+  command = plan
+
+  variables {
+    origins = {
+      inbox = { bucket = { name = "acme-prod-inbox", upload_paths = ["pending/*"] } }
+    }
+    default_behavior = {
+      origin          = "inbox"
+      allowed_methods = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    }
+  }
+
+  # Anyone who knows the domain could write into the bucket.
+  expect_failures = [var.origins]
+}
+
+run "upload_path_with_a_leading_slash" {
+  command = plan
+
+  variables {
+    origins = {
+      inbox = { bucket = { name = "acme-prod-inbox", require_signed_urls = true, upload_paths = ["/pending/*"] } }
+    }
+    key_groups = {
+      uploads = { public_keys = { current = { encoded_key = "MOCK" } } }
+    }
+    default_behavior = {
+      origin             = "inbox"
+      allowed_methods    = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+      trusted_key_groups = ["uploads"]
+    }
+  }
+
+  # S3 keys do not start with a slash: the statement would match nothing and every upload
+  # would be refused with a 403 that points at the bucket, not at the pattern.
+  expect_failures = [var.origins]
+}
+
+run "uploads_on_an_origin_no_behavior_lets_put_through" {
+  command = plan
+
+  variables {
+    origins = {
+      inbox = { bucket = { name = "acme-prod-inbox", require_signed_urls = true, upload_paths = ["pending/*"] } }
+    }
+    key_groups = {
+      uploads = { public_keys = { current = { encoded_key = "MOCK" } } }
+    }
+    # `private-files` allows GET and HEAD: CloudFront answers 403 to the PUT itself.
+    default_behavior = { origin = "inbox", preset = "private-files", trusted_key_groups = ["uploads"] }
+  }
+
+  expect_failures = [output.distribution_id]
+}
