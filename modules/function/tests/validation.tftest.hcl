@@ -277,6 +277,21 @@ run "vpc_without_subnets" {
   expect_failures = [var.vpc]
 }
 
+run "replacement_groups_without_the_flag" {
+  command = plan
+
+  variables {
+    vpc = {
+      subnet_ids                     = ["subnet-0123456789abcdef0"]
+      security_group_ids             = ["sg-0123456789abcdef0"]
+      replacement_security_group_ids = ["sg-0fedcba9876543210"]
+    }
+  }
+
+  # The provider ignores them without the flag: declared, and never used.
+  expect_failures = [var.vpc]
+}
+
 run "invalid_log_format" {
   command = plan
 

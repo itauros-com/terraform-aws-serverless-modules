@@ -160,11 +160,45 @@ run "server_access_logging" {
 run "no_caller_policy_by_default" {
   command = plan
 
-  # The bucket always has a policy — the TLS statements are unconditional — so this reports
-  # the caller's document alone.
+  # The bucket still has a policy, the TLS statements: this reports the caller's document
+  # alone.
   assert {
     condition     = output.policy_json_attached == false
     error_message = "With no policy_json the caller's document must not take part in the policy."
+  }
+
+  assert {
+    condition     = output.has_policy == true
+    error_message = "By default the bucket must have the TLS policy."
+  }
+}
+
+run "tls_not_enforced_and_nothing_else_no_policy" {
+  command = plan
+
+  variables {
+    enforce_tls = false
+  }
+
+  # A bucket adopted without a policy stays without one: an empty document would be
+  # refused by S3, and a policy with only the TLS deny is the change being postponed.
+  assert {
+    condition     = output.has_policy == false
+    error_message = "With enforce_tls = false and no policy_json the bucket must have no policy."
+  }
+}
+
+run "tls_not_enforced_but_a_caller_document" {
+  command = plan
+
+  variables {
+    enforce_tls = false
+    policy_json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+  }
+
+  assert {
+    condition     = output.has_policy == true && output.policy_json_attached == true
+    error_message = "With enforce_tls = false the caller's document must still make the policy."
   }
 }
 

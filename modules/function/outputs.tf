@@ -121,6 +121,15 @@ output "iam" {
   }
 }
 
+output "security_group_replacement" {
+  description = <<-EOT
+    The security groups the function's network interfaces move to before it is destroyed:
+    null when `replace_security_groups_on_destroy` is off, an empty list for the VPC's
+    default group.
+  EOT
+  value       = local.replace_security_groups ? var.vpc.replacement_security_group_ids : null
+}
+
 output "environment_variables" {
   description = "The effective environment variables, with the references already resolved. Useful in tests and to understand what the function sees."
   value       = local.environment_variables

@@ -138,6 +138,20 @@ async = { enabled = false }
 
 Then you turn them back on in a separate PR, where the diff is exactly what you want to read.
 
+### Adopting existing functions
+
+A function created with the upstream lambda module directly can be moved into this module's addresses with
+`state mv`. Two differences remain:
+
+- **Inline policies.** Several inline policies (`attach_policy_jsons`) become one (`additional_json[0]`)
+  plus the VPC one (`vpc[0]`), and nothing orders the creation of the new before the deletion of the old: a
+  function can run for a few seconds without permissions. Apply the new ones first with `-target`, then the
+  rest. The procedure is in [`modules/app`](../app#adopting-existing-resources).
+- **Security group replacement.** `vpc.replace_security_groups_on_destroy` and
+  `vpc.replacement_security_group_ids` keep upstream's behaviour of moving the network interfaces off the
+  function's security groups before it is destroyed, so that destroying the group does not fail with
+  DependencyViolation while Lambda's interfaces still hold it.
+
 ## Deploying the code
 
 The module **does not build packages**: the build belongs to CI. `ignore_code_changes` is `true` by
@@ -210,7 +224,7 @@ between environments a tag change in a PR.
 | <a name="input_runtime"></a> [runtime](#input\_runtime) | Lambda runtime. Ignored for container functions. | `string` | `"provided.al2023"` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to every resource the module creates. | `map(string)` | `{}` | no |
 | <a name="input_timeout"></a> [timeout](#input\_timeout) | Timeout in seconds. Behind an HTTP API Gateway the useful limit is 29s; beyond that the gateway answers 504. | `number` | `3` | no |
-| <a name="input_vpc"></a> [vpc](#input\_vpc) | VPC configuration. When it is set the module attaches the necessary network<br/>permissions on its own; when it is null it does not attach them at all.<br/><br/>This conditionality is deliberate: giving ENI permissions to a function that is<br/>not in a VPC is a pointless widening of its surface. | <pre>object({<br/>    subnet_ids         = list(string)<br/>    security_group_ids = list(string)<br/>  })</pre> | `null` | no |
+| <a name="input_vpc"></a> [vpc](#input\_vpc) | VPC configuration. When it is set the module attaches the necessary network<br/>permissions on its own; when it is null it does not attach them at all.<br/><br/>This conditionality is deliberate: giving ENI permissions to a function that is<br/>not in a VPC is a pointless widening of its surface.<br/><br/>`replace_security_groups_on_destroy` moves the function's network interfaces onto<br/>`replacement_security_group_ids` — the VPC's default group when empty — before the<br/>function is destroyed. Lambda's interfaces outlive the function by up to 40 minutes,<br/>and while they hold the function's security group, destroying that group fails with<br/>DependencyViolation. Off by default, so that the plan of an existing function does not<br/>change. | <pre>object({<br/>    subnet_ids         = list(string)<br/>    security_group_ids = list(string)<br/><br/>    replace_security_groups_on_destroy = optional(bool, false)<br/>    replacement_security_group_ids     = optional(list(string), [])<br/>  })</pre> | `null` | no |
 
 ## Outputs
 
@@ -230,5 +244,6 @@ between environments a tag change in a PR.
 | <a name="output_qualified_arn"></a> [qualified\_arn](#output\_qualified\_arn) | The published version's ARN. |
 | <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | The execution role's ARN. |
 | <a name="output_role_name"></a> [role\_name](#output\_role\_name) | The execution role's name, to attach policies from the outside. |
+| <a name="output_security_group_replacement"></a> [security\_group\_replacement](#output\_security\_group\_replacement) | The security groups the function's network interfaces move to before it is destroyed:<br/>null when `replace_security_groups_on_destroy` is off, an empty list for the VPC's<br/>default group. |
 | <a name="output_version"></a> [version](#output\_version) | The function's published version. |
 <!-- END_TF_DOCS -->

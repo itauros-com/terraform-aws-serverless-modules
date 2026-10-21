@@ -136,11 +136,15 @@ module "s3" {
   attach_policy = local.attach_policy
   policy        = var.policy_json
 
-  # Rejects non-TLS traffic and obsolete TLS versions: two statements that have no
-  # downsides and that an audit always asks for. They are also what makes the policy
-  # resource unconditional, and a duplicate policy in a consumer a silent conflict.
-  attach_deny_insecure_transport_policy = true
-  attach_require_latest_tls_policy      = true
+  # Rejects non-TLS traffic and obsolete TLS versions: two statements that an audit always
+  # asks for. While they are on they also make the policy resource unconditional, and a
+  # duplicate policy in a consumer a silent conflict.
+  #
+  # Off only by declaration, for a bucket adopted without a policy whose clients nobody can
+  # vouch for. Upstream creates the policy only when some statement is attached, so with
+  # nothing else to merge the bucket has no policy at all.
+  attach_deny_insecure_transport_policy = var.enforce_tls
+  attach_require_latest_tls_policy      = var.enforce_tls
 }
 
 # A single notification resource per bucket. S3 allows a single configuration and every

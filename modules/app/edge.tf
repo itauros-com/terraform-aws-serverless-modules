@@ -19,6 +19,7 @@ module "http_apis" {
   domain      = each.value.domain
 
   stage_name               = each.value.stage_name
+  permission_statement_id  = each.value.permission_statement_id
   throttling               = each.value.throttling
   access_logs              = each.value.access_logs
   disable_default_endpoint = each.value.disable_default_endpoint

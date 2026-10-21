@@ -219,8 +219,9 @@ variable "policy_json" {
   description = <<-EOT
     Statements to add to the bucket's policy, as a JSON document.
 
-    They are **merged** with the ones the module always attaches — deny insecure
-    transport, require the latest TLS — into the single policy the bucket has. S3 stores
+    They are **merged** with the ones the module attaches unless `enforce_tls = false` —
+    deny insecure transport, require the latest TLS — into the single policy the bucket
+    has. S3 stores
     one document per bucket and every write replaces it whole, so a consumer that needs
     its own statements passes them here instead of declaring a second
     `aws_s3_bucket_policy` on the same bucket, which would overwrite this one with no
@@ -236,6 +237,22 @@ variable "policy_json" {
   EOT
   type        = string
   default     = null
+}
+
+variable "enforce_tls" {
+  description = <<-EOT
+    Whether the bucket's policy denies requests over plain HTTP and over TLS older than
+    1.2. On by default, and it should stay on.
+
+    `false` is for a bucket adopted by a migration that has no policy today, when nobody
+    can vouch that every client — an on-premises integration, an old SDK — speaks TLS 1.2:
+    turning the deny on is then the one change of the adoption with a real effect, and it
+    belongs in a change of its own. With nothing else to merge, the bucket has no policy at
+    all; **on a bucket that has the policy, `false` removes it.**
+  EOT
+  type        = bool
+  default     = true
+  nullable    = false
 }
 
 variable "attach_policy" {

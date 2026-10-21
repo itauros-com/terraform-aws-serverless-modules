@@ -7,6 +7,15 @@ locals {
     for fk, f in var.functions : fk => f.vpc == null ? null : {
       subnet_ids         = f.vpc.subnet_ids
       security_group_ids = concat(local.function_security_group_ids[fk], f.vpc.security_group_ids)
+
+      replace_security_groups_on_destroy = f.vpc.replace_security_groups_on_destroy
+      replacement_security_group_ids = concat(
+        [
+          for sk in f.vpc.replacement_security_group_keys : module.security_groups[sk].id
+          if contains(keys(var.security_groups), sk)
+        ],
+        f.vpc.replacement_security_group_ids,
+      )
     }
   }
 }

@@ -65,6 +65,7 @@ module "buckets" {
 
   versioning_enabled = each.value.versioning_enabled
   manage_versioning  = each.value.manage_versioning
+  enforce_tls        = each.value.enforce_tls
   encryption         = { kms_key_arn = each.value.kms_key_arn }
 
   # The read statements of every distribution fronting this bucket, merged into the single

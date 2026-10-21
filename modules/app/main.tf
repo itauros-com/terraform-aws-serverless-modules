@@ -164,6 +164,16 @@ locals {
     (s.dead_letter_queue == null || contains(keys(var.queues), coalesce(s.dead_letter_queue, "x")))
   }
 
+  # The functions every API invokes, from its routes and its Lambda authorizers: the ones it
+  # creates a permission on. Read from the input, so that the check on shared statement ids
+  # does not wait for the APIs.
+  api_invoked_function_keys = {
+    for ak, a in var.http_apis : ak => toset(concat(
+      [for r in values(a.routes) : r.function],
+      [for z in values(a.authorizers) : z.function if z.function != null],
+    ))
+  }
+
   # Same pattern as the functions' security groups.
   glue_job_security_group_ids = {
     for jk, j in var.glue_jobs : jk => j.network == null ? [] : [
@@ -316,6 +326,12 @@ locals {
         if !contains(keys(var.security_groups), sk)
       ]
     ]),
+    flatten([
+      for fk, f in var.functions : [
+        for sk in try(f.vpc.replacement_security_group_keys, []) : format("functions['%s'].vpc.replacement_security_group_keys references the security group '%s', which is not in `security_groups`", fk, sk)
+        if !contains(keys(var.security_groups), sk)
+      ]
+    ]),
     [
       for fk, f in var.functions : format("functions['%s'].async.on_failure_queue references the queue '%s', which is not in `queues`", fk, f.async.on_failure_queue)
       if f.async.on_failure_queue != null && !contains(keys(var.queues), coalesce(f.async.on_failure_queue, "x"))
@@ -362,6 +378,24 @@ locals {
       for ck, c in var.cdns : [
         for ok, o in c.origins : format("cdns['%s'].origins['%s'] references the HTTP API '%s', which is not in `http_apis`", ck, ok, o.http_api)
         if o.http_api != null && !contains(keys(var.http_apis), coalesce(o.http_api, "x"))
+      ]
+    ]),
+    # A function's policy holds one statement per id. Two APIs invoking the same function
+    # under one declared id would each write the same statement, and the second apply fails
+    # with a ResourceConflictException. The derived ids carry the API's name and cannot
+    # collide; only the declared ones are checked. `keys` is sorted, so `i < j` visits
+    # every pair once.
+    flatten([
+      for i, ak in keys(var.http_apis) : [
+        for j, bk in keys(var.http_apis) : format(
+          "http_apis['%s'] and http_apis['%s'] both declare permission_statement_id '%s' and both invoke %s: a function's policy holds one statement per id",
+          ak, bk, var.http_apis[ak].permission_statement_id,
+          join(", ", sort(setintersection(local.api_invoked_function_keys[ak], local.api_invoked_function_keys[bk]))),
+        )
+        if i < j &&
+        var.http_apis[ak].permission_statement_id != null &&
+        var.http_apis[ak].permission_statement_id == var.http_apis[bk].permission_statement_id &&
+        length(setintersection(local.api_invoked_function_keys[ak], local.api_invoked_function_keys[bk])) > 0
       ]
     ]),
     # A site creates a bucket named `<prefix>-<key>`: a namesake key in `buckets` would

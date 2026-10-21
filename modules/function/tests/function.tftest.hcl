@@ -289,6 +289,32 @@ run "network_permissions_with_the_vpc" {
     condition     = output.iam.network == true
     error_message = "A function in a VPC must receive the network permissions."
   }
+
+  # Off by default: an existing function's plan must not change.
+  assert {
+    condition     = output.security_group_replacement == null
+    error_message = "Without replace_security_groups_on_destroy no replacement must be configured."
+  }
+}
+
+run "security_groups_replaced_on_destroy" {
+  command = plan
+
+  variables {
+    name    = "worker"
+    package = { local_path = "fixtures/dummy.zip" }
+    vpc = {
+      subnet_ids                         = ["subnet-0123456789abcdef0"]
+      security_group_ids                 = ["sg-0123456789abcdef0"]
+      replace_security_groups_on_destroy = true
+      replacement_security_group_ids     = ["sg-0fedcba9876543210"]
+    }
+  }
+
+  assert {
+    condition     = output.security_group_replacement == tolist(["sg-0fedcba9876543210"])
+    error_message = "The declared replacement groups must reach the function."
+  }
 }
 
 run "container_image" {
