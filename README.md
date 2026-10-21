@@ -106,6 +106,7 @@ exists to correct.
 |---|---|---|
 | [`grants`](modules/grants) | ✅ | Capability → IAM action table. Pure, no provider. |
 | [`function`](modules/function) | ✅ | Lambda + role + log group + event source + alarms. |
+| [`glue-job`](modules/glue-job) | ✅ | Glue job + role + log group + connection + failure notification. |
 | [`queue`](modules/queue) | ✅ | SQS + DLQ + redrive + fan-in policy + alarms. |
 | [`topic`](modules/topic) | ✅ | SNS + subscriptions + policy. |
 | [`table`](modules/table) | ✅ | DynamoDB with GSI/LSI, TTL, PITR, streams, deletion protection. |

@@ -169,39 +169,41 @@ variable "env_from" {
     resolved by the module.
 
     You state the resource's type and key; `attr` picks which attribute to inject and
-    has a sensible default per type: `name` for buckets, tables and secrets, `arn` for
-    topics, `url` for queues.
+    has a sensible default per type: `name` for buckets, tables, secrets and Glue jobs,
+    `arn` for topics, `url` for queues.
 
         env_from = {
-          DOCS_BUCKET = { bucket = "documents" }
-          JOBS_QUEUE  = { queue  = "emails" }
-          EVENTS_ARN  = { topic  = "operations" }
-          MONGO_URI   = { secret = "mongodb" }
+          DOCS_BUCKET = { bucket   = "documents" }
+          JOBS_QUEUE  = { queue    = "emails" }
+          EVENTS_ARN  = { topic    = "operations" }
+          MONGO_URI   = { secret   = "mongodb" }
+          RECONCILE   = { glue_job = "reconcile" }
         }
 
     The environment variable's name has no effect whatsoever on the resolution: it is
     just a name. A reference to a resource that does not exist makes the plan fail.
   EOT
   type = map(object({
-    bucket = optional(string)
-    table  = optional(string)
-    topic  = optional(string)
-    queue  = optional(string)
-    secret = optional(string)
-    attr   = optional(string)
+    bucket   = optional(string)
+    table    = optional(string)
+    topic    = optional(string)
+    queue    = optional(string)
+    secret   = optional(string)
+    glue_job = optional(string)
+    attr     = optional(string)
   }))
   default = {}
 
   validation {
     condition = alltrue([
       for k, r in var.env_from :
-      length([for v in [r.bucket, r.table, r.topic, r.queue, r.secret] : v if v != null]) == 1
+      length([for v in [r.bucket, r.table, r.topic, r.queue, r.secret, r.glue_job] : v if v != null]) == 1
     ])
     error_message = format(
-      "Every env_from entry must state exactly one resource type among bucket, table, topic, queue, secret. Non-conforming entries: %s.",
+      "Every env_from entry must state exactly one resource type among bucket, table, topic, queue, secret, glue_job. Non-conforming entries: %s.",
       join(", ", [
         for k, r in var.env_from : k
-        if length([for v in [r.bucket, r.table, r.topic, r.queue, r.secret] : v if v != null]) != 1
+        if length([for v in [r.bucket, r.table, r.topic, r.queue, r.secret, r.glue_job] : v if v != null]) != 1
       ])
     )
   }
@@ -220,18 +222,20 @@ variable "env_from" {
       (r.table == null || contains(keys(var.resources.tables), coalesce(r.table, ""))) &&
       (r.topic == null || contains(keys(var.resources.topics), coalesce(r.topic, ""))) &&
       (r.queue == null || contains(keys(var.resources.queues), coalesce(r.queue, ""))) &&
-      (r.secret == null || contains(keys(var.resources.secrets), coalesce(r.secret, "")))
+      (r.secret == null || contains(keys(var.resources.secrets), coalesce(r.secret, ""))) &&
+      (r.glue_job == null || contains(keys(var.resources.glue_jobs), coalesce(r.glue_job, "")))
     ])
     error_message = format(
-      "env_from references resources that are not in `resources`: %s. Available registry: buckets [%s], tables [%s], topics [%s], queues [%s], secrets [%s].",
+      "env_from references resources that are not in `resources`: %s. Available registry: buckets [%s], tables [%s], topics [%s], queues [%s], secrets [%s], glue_jobs [%s].",
       join(", ", [
-        for k, r in var.env_from : format("%s → %s", k, coalesce(r.bucket, r.table, r.topic, r.queue, r.secret, "?"))
+        for k, r in var.env_from : format("%s → %s", k, coalesce(r.bucket, r.table, r.topic, r.queue, r.secret, r.glue_job, "?"))
         if !(
           (r.bucket == null || contains(keys(var.resources.buckets), coalesce(r.bucket, ""))) &&
           (r.table == null || contains(keys(var.resources.tables), coalesce(r.table, ""))) &&
           (r.topic == null || contains(keys(var.resources.topics), coalesce(r.topic, ""))) &&
           (r.queue == null || contains(keys(var.resources.queues), coalesce(r.queue, ""))) &&
-          (r.secret == null || contains(keys(var.resources.secrets), coalesce(r.secret, "")))
+          (r.secret == null || contains(keys(var.resources.secrets), coalesce(r.secret, ""))) &&
+          (r.glue_job == null || contains(keys(var.resources.glue_jobs), coalesce(r.glue_job, "")))
         )
       ]),
       join(", ", keys(var.resources.buckets)),
@@ -239,6 +243,7 @@ variable "env_from" {
       join(", ", keys(var.resources.topics)),
       join(", ", keys(var.resources.queues)),
       join(", ", keys(var.resources.secrets)),
+      join(", ", keys(var.resources.glue_jobs)),
     )
   }
 }
@@ -275,6 +280,12 @@ variable "resources" {
       kms_key_arn = optional(string)
     })), {})
     secrets = optional(map(object({
+      arn         = string
+      name        = optional(string)
+      url         = optional(string)
+      kms_key_arn = optional(string)
+    })), {})
+    glue_jobs = optional(map(object({
       arn         = string
       name        = optional(string)
       url         = optional(string)

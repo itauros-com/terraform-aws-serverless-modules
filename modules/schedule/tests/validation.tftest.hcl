@@ -63,6 +63,33 @@ run "two_targets" {
   expect_failures = [var.target]
 }
 
+run "arguments_on_a_non_glue_target" {
+  command = plan
+
+  variables {
+    target = {
+      function_arn = "arn:aws:lambda:eu-west-1:111122223333:function:acme-prod-cleanup"
+      arguments    = { "--mode" = "nightly" }
+    }
+  }
+
+  expect_failures = [var.target]
+}
+
+run "input_on_a_glue_target" {
+  command = plan
+
+  variables {
+    target = {
+      glue_job_name = "acme-prod-reconcile"
+      input         = "{\"--mode\":\"nightly\"}"
+    }
+  }
+
+  # It would replace the StartJobRun request the module builds, job name included.
+  expect_failures = [var.target]
+}
+
 run "message_group_id_on_a_non_sqs_target" {
   command = plan
 

@@ -81,21 +81,34 @@ variable "timezone" {
 
 variable "target" {
   description = <<-EOT
-    The invocation's destination. State **exactly one** of `function_arn`, `queue_arn` and
-    `state_machine_arn`: the module generates the IAM permission matching the type, so the
-    type is declared and not inferred.
+    The invocation's destination. State **exactly one** of `function_arn`, `queue_arn`,
+    `state_machine_arn` and `glue_job_name`: the module generates the IAM permission
+    matching the type, so the type is declared and not inferred.
 
         target = {
           function_arn = module.cleanup.arn
           input        = jsonencode({ job = "cleanup" })
+        }
+
+    A Glue job is named rather than given by ARN, because the name is what StartJobRun
+    takes; the module derives the ARN the role's permission is scoped to. The run's
+    arguments go in `arguments`, not in `input`: the module builds the request body.
+
+        target = {
+          glue_job_name = module.reconcile.name
+          arguments     = { "--mode" = "nightly" }
         }
   EOT
   type = object({
     function_arn      = optional(string)
     queue_arn         = optional(string)
     state_machine_arn = optional(string)
+    glue_job_name     = optional(string)
     input             = optional(string)
     message_group_id  = optional(string)
+
+    # Glue only: the run's arguments, overriding the job's defaults for this run.
+    arguments = optional(map(string))
 
     # Redundant with respect to which ARN is set, but not superfluous: the ARNs come from
     # resources not yet created and are unknown at plan time, so inferring the type from
@@ -106,9 +119,9 @@ variable "target" {
 
   validation {
     condition = length([
-      for v in [var.target.function_arn, var.target.queue_arn, var.target.state_machine_arn] : v if v != null
+      for v in [var.target.function_arn, var.target.queue_arn, var.target.state_machine_arn, var.target.glue_job_name] : v if v != null
     ]) == 1
-    error_message = "target must state exactly one of `function_arn`, `queue_arn` and `state_machine_arn`."
+    error_message = "target must state exactly one of `function_arn`, `queue_arn`, `state_machine_arn` and `glue_job_name`."
   }
 
   validation {
@@ -117,8 +130,20 @@ variable "target" {
   }
 
   validation {
-    condition     = var.target.type == null || contains(["lambda", "sqs", "sfn"], coalesce(var.target.type, "x"))
-    error_message = "target.type must be 'lambda', 'sqs' or 'sfn'."
+    condition     = var.target.arguments == null || var.target.glue_job_name != null
+    error_message = "arguments only applies to a Glue job: set `glue_job_name`."
+  }
+
+  # The request body of StartJobRun is built by the module. An `input` next to it would
+  # be either dropped in silence or a second way to say the same thing.
+  validation {
+    condition     = var.target.input == null || var.target.glue_job_name == null
+    error_message = "A Glue job target takes its run's arguments in `arguments`, not in `input`: the module builds the StartJobRun request."
+  }
+
+  validation {
+    condition     = var.target.type == null || contains(["lambda", "sqs", "sfn", "glue"], coalesce(var.target.type, "x"))
+    error_message = "target.type must be 'lambda', 'sqs', 'sfn' or 'glue'."
   }
 }
 

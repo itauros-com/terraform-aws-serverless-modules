@@ -4,6 +4,23 @@ mock_provider "aws" {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
     }
   }
+
+  # The Glue job's ARN is derived from these three. With generated values the assertion
+  # on it would compare random strings.
+  mock_data "aws_partition" {
+    defaults = { partition = "aws" }
+  }
+
+  mock_data "aws_region" {
+    defaults = {
+      name   = "eu-west-1"
+      region = "eu-west-1"
+    }
+  }
+
+  mock_data "aws_caller_identity" {
+    defaults = { account_id = "111122223333" }
+  }
 }
 
 variables {
@@ -76,6 +93,59 @@ run "target_state_machine" {
   assert {
     condition     = output.target_type == "sfn"
     error_message = "With state_machine_arn the type must be sfn."
+  }
+}
+
+run "target_glue_job" {
+  command = plan
+
+  variables {
+    target = {
+      glue_job_name = "acme-prod-reconcile"
+      arguments     = { "--mode" = "nightly" }
+    }
+  }
+
+  assert {
+    condition     = output.target_type == "glue"
+    error_message = "With glue_job_name the type must be glue."
+  }
+
+  # The role's permission is scoped to the job, not to the universal target's ARN, which
+  # is not a resource IAM knows about.
+  assert {
+    condition     = output.target_arn == "arn:aws:glue:eu-west-1:111122223333:job/acme-prod-reconcile"
+    error_message = "The job's ARN must be derived from its name, the region and the account."
+  }
+
+  assert {
+    condition     = aws_scheduler_schedule.this.target[0].arn == "arn:aws:scheduler:::aws-sdk:glue:startJobRun"
+    error_message = "A Glue job is reached through the universal target for StartJobRun."
+  }
+
+  assert {
+    condition = jsondecode(aws_scheduler_schedule.this.target[0].input) == {
+      JobName   = "acme-prod-reconcile"
+      Arguments = { "--mode" = "nightly" }
+    }
+    error_message = "The input must be the StartJobRun request: the job's name and the run's arguments."
+  }
+}
+
+run "target_glue_job_without_arguments" {
+  command = plan
+
+  variables {
+    target = {
+      glue_job_name = "acme-prod-reconcile"
+    }
+  }
+
+  # An empty `Arguments` would be harmless, but an absent one is what a run with the job's
+  # defaults looks like in CloudTrail.
+  assert {
+    condition     = jsondecode(aws_scheduler_schedule.this.target[0].input) == { JobName = "acme-prod-reconcile" }
+    error_message = "Without arguments the request must carry the job's name alone."
   }
 }
 

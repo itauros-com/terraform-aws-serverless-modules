@@ -3,18 +3,19 @@ variable "grants" {
     Permissions declared by intent, not as a list of actions.
 
     The keys take the form `<type>/<name>`, where the type is one of `bucket`,
-    `table`, `topic`, `queue`, `secret` and the name is the resource's key in
-    `resources`. The type prefix is mandatory because the same name can belong to
-    different services: a topic `operations` and a queue `operations` coexist
+    `table`, `topic`, `queue`, `secret`, `glue_job` and the name is the resource's
+    key in `resources`. The type prefix is mandatory because the same name can belong
+    to different services: a topic `operations` and a queue `operations` coexist
     perfectly well.
 
     The values are the capabilities granted. Valid capabilities per type:
 
-      bucket → read, write
-      table  → read, write, scan
-      topic  → publish
-      queue  → publish, consume
-      secret → read
+      bucket   → read, write
+      table    → read, write, scan
+      topic    → publish
+      queue    → publish, consume
+      secret   → read
+      glue_job → start
 
     Example:
 
@@ -29,11 +30,11 @@ variable "grants" {
 
   validation {
     condition = alltrue([
-      for k in keys(var.grants) : can(regex("^(bucket|table|topic|queue|secret)/.+$", k))
+      for k in keys(var.grants) : can(regex("^(bucket|table|topic|queue|secret|glue_job)/.+$", k))
     ])
     error_message = format(
-      "Malformed grants keys: %s. Required format: '<bucket|table|topic|queue|secret>/<name>'.",
-      join(", ", [for k in keys(var.grants) : format("'%s'", k) if !can(regex("^(bucket|table|topic|queue|secret)/.+$", k))])
+      "Malformed grants keys: %s. Required format: '<bucket|table|topic|queue|secret|glue_job>/<name>'.",
+      join(", ", [for k in keys(var.grants) : format("'%s'", k) if !can(regex("^(bucket|table|topic|queue|secret|glue_job)/.+$", k))])
     )
   }
 
@@ -92,6 +93,12 @@ variable "resources" {
       url         = optional(string)
       kms_key_arn = optional(string)
     })), {})
+    glue_jobs = optional(map(object({
+      arn         = string
+      name        = optional(string)
+      url         = optional(string)
+      kms_key_arn = optional(string)
+    })), {})
   })
   default = {}
 }
@@ -101,8 +108,8 @@ variable "extra_statements" {
     Literal IAM statements, for services outside the capability table (SES,
     Bedrock, third-party services, cases with unusual conditions).
 
-    This is a deliberate escape hatch: the capability table covers the five services
-    of serverless wiring, not the whole of AWS. Do not use it to work around the
+    This is a deliberate escape hatch: the capability table covers the services of
+    serverless wiring, not the whole of AWS. Do not use it to work around the
     capabilities on services that are already covered.
   EOT
   type = list(object({

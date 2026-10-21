@@ -27,11 +27,11 @@ output "role_name" {
 }
 
 output "target_type" {
-  description = "The detected target type: `lambda`, `sqs` or `sfn`. It determines the only action granted to the role."
+  description = "The detected target type: `lambda`, `sqs`, `sfn` or `glue`. It determines the only action granted to the role."
   value       = local.target_type
 }
 
 output "target_arn" {
-  description = "The target's ARN."
+  description = "The target's ARN — for a Glue job the job's, derived from its name, not the universal target Scheduler calls."
   value       = local.target_arn
 }

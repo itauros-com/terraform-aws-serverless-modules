@@ -109,6 +109,15 @@ run "no_function_has_network_permissions" {
   }
 }
 
+run "the_glue_job_plans" {
+  command = plan
+
+  assert {
+    condition     = output.glue_job_names["reconcile"] == "sls-app-dev-reconcile"
+    error_message = "The job's name must join project, environment and key."
+  }
+}
+
 run "observability_is_wired" {
   command = plan
 

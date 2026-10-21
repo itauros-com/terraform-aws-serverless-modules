@@ -27,7 +27,7 @@ output "policy_json" {
   precondition {
     condition = length(local.unknown_capabilities) == 0
     error_message = format(
-      "Unknown capabilities for the resource type: %s. Valid capabilities: bucket → read, write | table → read, write, scan | topic → publish | queue → publish, consume | secret → read.",
+      "Unknown capabilities for the resource type: %s. Valid capabilities: bucket → read, write | table → read, write, scan | topic → publish | queue → publish, consume | secret → read | glue_job → start.",
       join(", ", local.unknown_capabilities),
     )
   }

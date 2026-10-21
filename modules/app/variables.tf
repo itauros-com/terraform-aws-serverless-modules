@@ -424,12 +424,13 @@ variable "functions" {
     env = optional(map(string), {})
 
     env_from = optional(map(object({
-      bucket = optional(string)
-      table  = optional(string)
-      topic  = optional(string)
-      queue  = optional(string)
-      secret = optional(string)
-      attr   = optional(string)
+      bucket   = optional(string)
+      table    = optional(string)
+      topic    = optional(string)
+      queue    = optional(string)
+      secret   = optional(string)
+      glue_job = optional(string)
+      attr     = optional(string)
     })), {})
 
     grants = optional(map(list(string)), {})
@@ -498,6 +499,115 @@ variable "functions" {
       join(", ", [for k, f in var.functions : k if(f.image != null) == (f.package != null)]),
     )
   }
+}
+
+# ------------------------------------------------------------------------------
+# Glue jobs
+# ------------------------------------------------------------------------------
+
+variable "glue_jobs" {
+  description = <<-EOT
+    AWS Glue jobs. See [`modules/glue-job`](../glue-job).
+
+    `script` and `temp_dir` name a bucket of `buckets` by key; `args_from` resolves job
+    arguments the way `env_from` resolves a function's variables; `grants` work as on a
+    function. A function that starts the job declares it like any other resource:
+
+        glue_jobs = {
+          reconcile = {
+            script    = { bucket = "glue-scripts", key = "scripts/reconcile.py" }
+            temp_dir  = { bucket = "glue-temp" }
+            args_from = { "--target_bucket" = { bucket = "documents" } }
+            grants    = { "bucket/documents" = ["read", "write"] }
+          }
+        }
+
+        functions = {
+          api = {
+            env_from = { RECONCILE_JOB = { glue_job = "reconcile" } }
+            grants   = { "glue_job/reconcile" = ["start"] }
+          }
+        }
+
+    `network.security_group_keys` reference `security_groups` by key, added to the group
+    the module creates for the job. A failed run is notified on the alarm topic.
+  EOT
+  type = map(object({
+    description = optional(string)
+
+    script = object({
+      bucket = string
+      key    = string
+    })
+    temp_dir = optional(object({
+      bucket = string
+      prefix = optional(string)
+    }))
+
+    command                = optional(string, "glueetl")
+    glue_version           = optional(string)
+    python_version         = optional(string)
+    worker_type            = optional(string)
+    number_of_workers      = optional(number)
+    max_capacity           = optional(number)
+    timeout                = optional(number, 60)
+    max_retries            = optional(number, 0)
+    max_concurrent_runs    = optional(number, 1)
+    execution_class        = optional(string)
+    security_configuration = optional(string)
+
+    network = optional(object({
+      subnet_id           = string
+      security_group_keys = optional(list(string), [])
+      security_group_ids  = optional(list(string), [])
+      jdbc = optional(object({
+        url    = string
+        secret = string
+      }))
+    }))
+    connections = optional(list(string), [])
+
+    args = optional(map(string), {})
+    args_from = optional(map(object({
+      bucket   = optional(string)
+      table    = optional(string)
+      topic    = optional(string)
+      queue    = optional(string)
+      secret   = optional(string)
+      glue_job = optional(string)
+      attr     = optional(string)
+    })), {})
+
+    grants = optional(map(list(string)), {})
+    extra_policy_statements = optional(list(object({
+      sid       = optional(string)
+      effect    = optional(string, "Allow")
+      actions   = list(string)
+      resources = list(string)
+      condition = optional(list(object({
+        test     = string
+        variable = string
+        values   = list(string)
+      })), [])
+    })), [])
+    managed_policy_arns = optional(list(string), [])
+
+    # `alarms.actions` is not here: the alarm topic's ARN is injected by the composition.
+    observability = optional(object({
+      log_retention_days = optional(number, 7)
+      log_kms_key_id     = optional(string)
+      continuous_logging = optional(bool, true)
+      metrics            = optional(bool, true)
+      job_insights       = optional(bool, true)
+      alarms = optional(object({
+        enabled = optional(bool, true)
+        states  = optional(list(string), ["FAILED", "TIMEOUT", "ERROR"])
+      }), {})
+    }), {})
+
+    tags = optional(map(string), {})
+  }))
+  default = {}
 }
 
 # ------------------------------------------------------------------------------
@@ -744,7 +854,13 @@ variable "registries" {
 }
 
 variable "schedules" {
-  description = "EventBridge Scheduler schedules. The target references a function or a queue by key."
+  description = <<-EOT
+    EventBridge Scheduler schedules. The target references a function, a queue or a Glue
+    job by key.
+
+    A Glue job's run takes its arguments in `arguments`, which override the job's own for
+    that run; `input` does not apply to it.
+  EOT
   type = map(object({
     description = optional(string)
     expression  = string
@@ -754,9 +870,11 @@ variable "schedules" {
 
     target_function          = optional(string)
     target_queue             = optional(string)
+    target_glue_job          = optional(string)
     target_state_machine_arn = optional(string)
     input                    = optional(string)
     message_group_id         = optional(string)
+    arguments                = optional(map(string))
 
     dead_letter_queue         = optional(string)
     allow_missing_dead_letter = optional(bool, false)
@@ -777,10 +895,10 @@ variable "schedules" {
   validation {
     condition = alltrue([
       for s in values(var.schedules) : length([
-        for v in [s.target_function, s.target_queue, s.target_state_machine_arn] : v if v != null
+        for v in [s.target_function, s.target_queue, s.target_glue_job, s.target_state_machine_arn] : v if v != null
       ]) == 1
     ])
-    error_message = "Every schedule must state exactly one of `target_function`, `target_queue` and `target_state_machine_arn`."
+    error_message = "Every schedule must state exactly one of `target_function`, `target_queue`, `target_glue_job` and `target_state_machine_arn`."
   }
 }
 
