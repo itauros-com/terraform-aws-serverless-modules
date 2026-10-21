@@ -28,6 +28,20 @@ variable "versioning_enabled" {
   default     = true
 }
 
+variable "manage_versioning" {
+  description = <<-EOT
+    Whether the module manages the versioning configuration at all. `false` leaves it as it
+    is, and `versioning_enabled` is ignored.
+
+    Only for a bucket adopted by a migration that has never been versioned: managing it
+    with `versioning_enabled = false` sets it to Suspended, and a bucket cannot go back to
+    never-versioned.
+  EOT
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
 variable "encryption" {
   description = <<-EOT
     Encryption at rest. `AES256` (SSE-S3) by default, at no additional cost.

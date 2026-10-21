@@ -64,6 +64,7 @@ module "buckets" {
   tags   = merge(local.tags, each.value.tags)
 
   versioning_enabled = each.value.versioning_enabled
+  manage_versioning  = each.value.manage_versioning
   encryption         = { kms_key_arn = each.value.kms_key_arn }
 
   # The read statements of every distribution fronting this bucket, merged into the single
