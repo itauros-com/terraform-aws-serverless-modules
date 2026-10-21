@@ -95,6 +95,32 @@ run "one_permission_per_function_not_per_route" {
   }
 }
 
+run "authorizer_name_derived_or_declared" {
+  command = plan
+
+  variables {
+    authorizers = {
+      custom  = { type = "lambda", function = "authorizer" }
+      adopted = { type = "lambda", function = "authorizer", name = "got-dev-authorizer" }
+    }
+    routes = {
+      "ANY /files" = { function = "files", authorizer = "custom" }
+      "GET /users" = { function = "users", authorizer = "adopted" }
+    }
+  }
+
+  assert {
+    condition     = local.authorizers["custom"].name == "acme-prod-api-custom"
+    error_message = "Without `name` the authorizer's name must be derived from the API's and the key."
+  }
+
+  # An authorizer adopted from an existing API keeps the name it has.
+  assert {
+    condition     = local.authorizers["adopted"].name == "got-dev-authorizer"
+    error_message = "A declared `name` must replace the derived one."
+  }
+}
+
 run "jwt_authorizer_without_a_lambda" {
   command = plan
 

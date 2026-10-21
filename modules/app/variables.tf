@@ -631,6 +631,7 @@ variable "http_apis" {
     })), {})
 
     authorizers = optional(map(object({
+      name                    = optional(string)
       type                    = optional(string, "lambda")
       function                = optional(string)
       identity_sources        = optional(list(string), ["$request.header.Authorization"])
@@ -668,6 +669,7 @@ variable "http_apis" {
       retention_days  = optional(number, 30)
       kms_key_id      = optional(string)
       destination_arn = optional(string)
+      format          = optional(string)
     }), {})
 
     disable_default_endpoint = optional(bool, false)
