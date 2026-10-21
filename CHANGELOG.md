@@ -7,6 +7,37 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [0.4.0] — 2026-10-21
+
+Three options to adopt existing resources into the modules without renaming or reconfiguring them, and
+an upstream that does not go back in time. They come from adopting an API, its authorizers and its
+buckets into `modules/app` at parity.
+
+### Added
+
+- `modules/http-api` — `authorizers[*].name` overrides the derived `<api name>-<key>`, for an authorizer
+  that already exists under another name; `access_logs.format` overrides the stage's access log format.
+  Both are also on `modules/app`'s `http_apis`.
+- `modules/bucket` — `manage_versioning`, `true` by default. With `false` the versioning configuration is
+  left out of the module and `versioning_enabled` is ignored. It is for a bucket that has never been
+  versioned: managing it with `versioning_enabled = false` sets it to Suspended, and a bucket cannot go
+  back to never-versioned. Also on `modules/app`'s `buckets`.
+
+### Changed
+
+- `modules/http-api` — upstream `terraform-aws-modules/apigateway-v2` from `~> 5.0` to `~> 6.0`. The
+  interface is the same — 6.x only adds `region` — and so are the resources and their addresses: the
+  plan of an existing API does not change. An API whose state was written by 6.x can now be adopted
+  without going back to an older upstream.
+- `modules/http-api` and `modules/app` require the AWS provider `>= 6.28, < 7.0`, the floor of
+  apigateway-v2 6.x. `~> 6.0` allowed older providers without guaranteeing the floor.
+
+### Notes
+
+A MINOR: the defaults are unchanged, no variable changes meaning and no state address moves.
+
+A caller whose lock file holds an AWS provider older than 6.28 must run `terraform init -upgrade` once.
+
 ## [0.3.0] — 2026-10-21
 
 ### Added
