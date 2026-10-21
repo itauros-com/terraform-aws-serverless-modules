@@ -23,6 +23,16 @@ variables {
     secrets = {
       mongodb = { arn = "arn:aws:secretsmanager:eu-west-1:111122223333:secret:acme-prod-mongodb-AbCdEf", name = "acme-prod-mongodb" }
     }
+    glue_jobs = {
+      reconcile = { arn = "arn:aws:glue:eu-west-1:111122223333:job/acme-prod-reconcile", name = "acme-prod-reconcile" }
+      # A key on a job is legal input, and `start` must not turn it into a KMS statement
+      # with no actions — which AWS rejects at apply.
+      sealed = {
+        arn         = "arn:aws:glue:eu-west-1:111122223333:job/acme-prod-sealed"
+        name        = "acme-prod-sealed"
+        kms_key_arn = "arn:aws:kms:eu-west-1:111122223333:key/ef01-5678"
+      }
+    }
   }
 }
 
@@ -160,6 +170,40 @@ run "secret_read" {
       "secretsmanager:DescribeSecret", "secretsmanager:GetSecretValue",
     ]
     error_message = "read on a secret must grant GetSecretValue and DescribeSecret."
+  }
+}
+
+run "glue_job_start_follows_and_stops_the_run" {
+  variables {
+    grants = {
+      "glue_job/reconcile" = ["start"]
+    }
+  }
+
+  # StartJobRun alone starts the run and leaves the caller unable to ask how it ended.
+  assert {
+    condition = one([for s in jsondecode(output.policy_json).Statement : s if s.Sid == "GlueJobReconcileSelf"]).Action == [
+      "glue:BatchStopJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:StartJobRun",
+    ]
+    error_message = "start on a Glue job must grant StartJobRun, GetJobRun, GetJobRuns and BatchStopJobRun."
+  }
+
+  assert {
+    condition     = one([for s in jsondecode(output.policy_json).Statement : s if s.Sid == "GlueJobReconcileSelf"]).Resource == ["arn:aws:glue:eu-west-1:111122223333:job/acme-prod-reconcile"]
+    error_message = "start must be scoped to the job's ARN."
+  }
+}
+
+run "glue_job_start_adds_no_kms" {
+  variables {
+    grants = {
+      "glue_job/sealed" = ["start"]
+    }
+  }
+
+  assert {
+    condition     = length([for s in jsondecode(output.policy_json).Statement : s if startswith(s.Sid, "KmsAccess")]) == 0
+    error_message = "start moves no encrypted data through the job: no KMS statement must appear."
   }
 }
 

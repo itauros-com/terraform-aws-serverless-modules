@@ -45,6 +45,20 @@ output "functions" {
   }
 }
 
+output "glue_jobs" {
+  description = "Name, ARN, role, log group and network of every Glue job, by key. `security_group_id` is the source to let in on the database's security group."
+  value = {
+    for k, m in module.glue_jobs : k => {
+      name              = m.name
+      arn               = m.arn
+      role_arn          = m.role_arn
+      log_group         = m.log_group_name
+      connection_name   = m.connection_name
+      security_group_id = m.security_group_id
+    }
+  }
+}
+
 output "http_apis" {
   description = "Endpoint, invocation URL and effective per-route authorization of every API."
   value = {

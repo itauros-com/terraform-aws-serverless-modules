@@ -12,6 +12,10 @@ locals {
     topic  = { registry = "topics", service = "sns", child_suffix = null }
     queue  = { registry = "queues", service = "sqs", child_suffix = null }
     secret = { registry = "secrets", service = "secretsmanager", child_suffix = null }
+
+    # A job's runs are not children with an ARN of their own: StartJobRun, GetJobRun and
+    # BatchStopJobRun all authorize against the job's ARN.
+    glue_job = { registry = "glue_jobs", service = "glue", child_suffix = null }
   }
 
   # THE TABLE. The single source of truth for the capability → action translation.
@@ -61,6 +65,14 @@ locals {
         { actions = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"], scope = "self" },
       ]
     }
+    # `start` is what the caller of a job needs, not just the call that starts it: whoever
+    # starts a run also follows it to the end and stops it when it is no longer wanted.
+    # Without GetJobRun the caller starts the job and cannot tell whether it finished.
+    glue = {
+      start = [
+        { actions = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"], scope = "self" },
+      ]
+    }
   }
 
   # Implicit KMS permissions when the resource is encrypted with a CMK. Writing to
@@ -74,11 +86,12 @@ locals {
   }
 
   registry = {
-    buckets = var.resources.buckets
-    tables  = var.resources.tables
-    topics  = var.resources.topics
-    queues  = var.resources.queues
-    secrets = var.resources.secrets
+    buckets   = var.resources.buckets
+    tables    = var.resources.tables
+    topics    = var.resources.topics
+    queues    = var.resources.queues
+    secrets   = var.resources.secrets
+    glue_jobs = var.resources.glue_jobs
   }
 
   parsed = {
@@ -169,12 +182,14 @@ locals {
     }
   ]
 
+  # A capability absent from `kms_actions` — `start` on a job — moves no encrypted data
+  # through the resource, and contributes no KMS action even when a key is declared.
   kms_pairs = flatten([
     for key in local.valid_keys : [
       for cap in local.parsed[key].caps : {
         arn     = local.entries[key].kms_key_arn
-        actions = local.kms_actions[cap]
-      } if local.entries[key].kms_key_arn != null
+        actions = lookup(local.kms_actions, cap, [])
+      } if local.entries[key].kms_key_arn != null && length(lookup(local.kms_actions, cap, [])) > 0
     ]
   ])
 

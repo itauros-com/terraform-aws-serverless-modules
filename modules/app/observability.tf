@@ -24,9 +24,12 @@ module "alarm_topic" {
 
   subscriptions = var.observability.alarm_subscriptions
 
-  allow_publish_from = [
-    { service = "cloudwatch", source_account = data.aws_caller_identity.current.account_id },
-  ]
+  # The failed runs of the Glue jobs arrive through EventBridge rules, not CloudWatch alarms.
+  # Appended after CloudWatch's entry, whose statement keeps its Sid.
+  allow_publish_from = concat(
+    [{ service = "cloudwatch", source_account = data.aws_caller_identity.current.account_id }],
+    local.glue_job_alarms_enabled ? [{ service = "events", source_account = data.aws_caller_identity.current.account_id }] : [],
+  )
 
   # The alarm topic has no alarms of its own.
   alarms = { enabled = false }
@@ -48,6 +51,7 @@ locals {
   observed_log_groups = concat(
     [for m in values(module.functions) : m.log_group_name],
     compact([for m in values(module.http_apis) : m.access_log_group_name]),
+    compact([for m in values(module.glue_jobs) : m.log_group_name]),
   )
 }
 
