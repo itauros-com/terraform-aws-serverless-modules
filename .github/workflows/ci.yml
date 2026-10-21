@@ -166,3 +166,20 @@ jobs:
         run: terraform -chdir=${{ matrix.dir }} init -input=false
       - if: steps.gate.outputs.run == 'true'
         run: terraform -chdir=${{ matrix.dir }} plan -input=false -lock=false
+
+  # The one check the ruleset on main requires: the matrix jobs' names change with
+  # the modules and examples. `discover` is among the needs because when it fails the
+  # matrix jobs are skipped, not failed, and a skipped job would let this one pass.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [discover, fmt, validate, test, lint, security, docs, plan-examples]
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          exit 1
+      - run: echo "all checks passed"

@@ -1,0 +1,29 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # On every push to main, opens or updates the release PR: next version, computed
+  # from the Conventional Commits since the last tag, and the CHANGELOG entry. Merging
+  # it creates the tag and the GitHub release.
+  #
+  # With the default GITHUB_TOKEN the release PR does not trigger `ci`, and so never
+  # gets the `ci-ok` check: GitHub does not start workflows from events caused by that
+  # token. RELEASE_PLEASE_TOKEN, a fine-grained token with contents and pull-requests
+  # write on this repo, avoids that, and the release commits are authored by its owner
+  # instead of github-actions[bot].
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
