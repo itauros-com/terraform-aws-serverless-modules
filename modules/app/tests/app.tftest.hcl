@@ -663,6 +663,36 @@ run "two_distributions_on_one_bucket_merge" {
   }
 }
 
+run "cdn_upload_statement_reaches_the_bucket_policy" {
+  command = plan
+
+  variables {
+    cdns = {
+      edge = {
+        origins = {
+          inbox = { bucket = "documents", require_signed_urls = true, upload_paths = ["pending/*"] }
+        }
+        key_groups = {
+          uploads = { public_keys = { current = { encoded_key = "MOCK" } } }
+        }
+        default_behavior = {
+          origin             = "inbox"
+          preset             = "private-files"
+          allowed_methods    = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+          trusted_key_groups = ["uploads"]
+        }
+      }
+    }
+  }
+
+  # The write statement has to land in the same single policy as the read one. Left out of
+  # the merge, the policy would look right and every upload would answer 403.
+  assert {
+    condition     = length(local.cdn_bucket_statements["documents"]) == 2
+    error_message = "An origin with upload_paths must contribute its read and its write statement."
+  }
+}
+
 run "cdn_towards_a_nonexistent_bucket" {
   command = plan
 

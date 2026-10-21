@@ -308,3 +308,19 @@ run "site_and_bucket_with_the_same_key" {
   # apply time.
   expect_failures = [output.wiring]
 }
+
+run "uploads_on_an_api_origin" {
+  command = plan
+
+  variables {
+    http_apis = { apigw = {} }
+    cdns = {
+      edge = {
+        origins          = { app = { http_api = "apigw", upload_paths = ["pending/*"] } }
+        default_behavior = { origin = "app", preset = "api" }
+      }
+    }
+  }
+
+  expect_failures = [var.cdns]
+}

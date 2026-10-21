@@ -161,6 +161,7 @@ locals {
             name                = local.bucket_names[o.bucket]
             origin_path         = o.origin_path
             require_signed_urls = o.require_signed_urls
+            upload_paths        = o.upload_paths
           }
           http = null
           } : {
@@ -204,10 +205,16 @@ locals {
   # place that sees all the contributors. They are merged as objects and encoded once
   # — a document already encoded embeds the distribution's ARN, unknown at plan, and
   # `jsondecode` on an unknown string yields something nobody can index into.
+  #
+  # An origin with `upload_paths` contributes its write statement too. Whether it has one
+  # is read from the input and not from the module's map, whose values are unknown at plan.
   cdn_bucket_statements = {
     for bk in keys(var.buckets) : bk => flatten([
       for ck, c in var.cdns : [
-        for ok, o in c.origins : module.cdns[ck].bucket_policy_statements[ok]
+        for ok, o in c.origins : concat(
+          [module.cdns[ck].bucket_policy_statements[ok]],
+          length(o.upload_paths) > 0 ? [module.cdns[ck].bucket_upload_statements[ok]] : [],
+        )
         if o.bucket == bk && contains(keys(local.valid_cdns), ck)
       ]
     ])

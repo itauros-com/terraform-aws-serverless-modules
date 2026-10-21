@@ -634,6 +634,9 @@ variable "cdns" {
       origin_path         = optional(string)
       require_signed_urls = optional(bool, false)
 
+      # Bucket origins only: object keys the distribution may write. See modules/cdn.
+      upload_paths = optional(list(string), [])
+
       protocol_policy   = optional(string, "https-only")
       read_timeout      = optional(number, 30)
       keepalive_timeout = optional(number, 5)
@@ -705,6 +708,15 @@ variable "cdns" {
       ]
     ]))
     error_message = "Every origin must state either `bucket` or `http_api`, not both and not neither."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for c in values(var.cdns) : [
+        for o in values(c.origins) : o.bucket != null || length(o.upload_paths) == 0
+      ]
+    ]))
+    error_message = "`upload_paths` applies to `bucket` origins only: an HTTP API takes its uploads through its own routes."
   }
 }
 
