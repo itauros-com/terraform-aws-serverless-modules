@@ -89,9 +89,10 @@ module "s3" {
   control_object_ownership = true
   object_ownership         = var.object_ownership
 
-  versioning = {
+  # Upstream creates the versioning resource only for a non-empty map.
+  versioning = var.manage_versioning ? {
     enabled = var.versioning_enabled
-  }
+  } : {}
 
   server_side_encryption_configuration = {
     rule = {
