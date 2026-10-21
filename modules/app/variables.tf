@@ -92,6 +92,7 @@ variable "buckets" {
   EOT
   type = map(object({
     versioning_enabled = optional(bool, true)
+    manage_versioning  = optional(bool, true)
     kms_key_arn        = optional(string)
     force_destroy      = optional(bool, false)
     object_ownership   = optional(string, "BucketOwnerEnforced")
