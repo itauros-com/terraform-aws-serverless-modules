@@ -138,7 +138,7 @@ is enabled by setting the `CI_AWS_ROLE_ARN` repository variable.
 
 - Terraform `>= 1.11` (callers use `use_lockfile` on the S3 backend; the modules use `optional()` with
   defaults and cross-variable validation).
-- AWS provider `~> 6.0`.
+- AWS provider `~> 6.0`; `>= 6.28` for `http-api` and `app`, the floor of `apigateway-v2` 6.x.
 
 A **breaking change** is any change to the variable contract or to the generated state addresses: the
 first breaks callers' `plan`, the second requires `moved` blocks on their side. See
