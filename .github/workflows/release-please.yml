@@ -27,8 +27,11 @@ jobs:
       # release PR gets no `pull_request` run of ci, and without `ci-ok` the ruleset
       # on main would not let it merge. workflow_dispatch is the exception: the run
       # reports its checks on the release branch's head commit, which is the PR's.
+      #
+      # The PR is read with jq and not with fromJSON: a step's env is evaluated even
+      # when its `if` is false, and `pr` is empty on a push that opens no release PR.
       - if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          PR: ${{ steps.release.outputs.pr }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$(jq -r .headBranchName <<<"$PR")"
