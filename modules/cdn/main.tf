@@ -200,6 +200,17 @@ locals {
       try(local.bucket_origins[b.origin].require_signed_urls, false) &&
       length(b.trusted_key_groups) == 0
     ],
+    # The bucket policy would allow the write and CloudFront would refuse it first, with a
+    # 403 that looks exactly like the bucket's.
+    [
+      for k, o in local.bucket_origins : format(
+        "origins['%s'] declares `upload_paths`, but no behavior serving it allows PUT: CloudFront would refuse every upload before it reaches the bucket",
+        k,
+      )
+      if length(o.upload_paths) > 0 && !anytrue([
+        for b in values(local.behavior_fields) : b.origin == k && contains(b.allowed_methods, "PUT")
+      ])
+    ],
   )
 
   # ----------------------------------------------------------------------------
@@ -217,9 +228,15 @@ locals {
   # than one distribution and S3 rejects a document with two identical Sids. The composition
   # merges the statements of every distribution into the bucket's single policy, and the
   # names are what keeps them apart there.
+  bucket_policy_sids = {
+    for k in keys(local.bucket_origins) : k => format(
+      "AllowCloudFrontOAC%s", replace(title(replace(format("%s %s", local.cdn_name, k), "/[^0-9A-Za-z]+/", " ")), " ", "")
+    )
+  }
+
   bucket_policy_statements = {
     for k, o in local.bucket_origins : k => {
-      Sid       = format("AllowCloudFrontOAC%s", replace(title(replace(format("%s %s", local.cdn_name, k), "/[^0-9A-Za-z]+/", " ")), " ", ""))
+      Sid       = local.bucket_policy_sids[k]
       Effect    = "Allow"
       Principal = { Service = "cloudfront.amazonaws.com" }
       Action    = ["s3:GetObject"]
@@ -230,10 +247,32 @@ locals {
     }
   }
 
+  # The write statement, for the origins that declare `upload_paths`.
+  #
+  # A statement of its own and not a second action in the read one: the read statement
+  # covers every object, and `s3:PutObject` there would let the distribution overwrite
+  # anything in the bucket — the published files included — not just the upload paths.
+  bucket_upload_statements = {
+    for k, o in local.bucket_origins : k => {
+      Sid       = format("%sUpload", local.bucket_policy_sids[k])
+      Effect    = "Allow"
+      Principal = { Service = "cloudfront.amazonaws.com" }
+      Action    = ["s3:PutObject"]
+      Resource  = [for p in o.upload_paths : format("%s/%s", local.bucket_arns[k], p)]
+      Condition = {
+        StringEquals = { "AWS:SourceArn" = aws_cloudfront_distribution.this.arn }
+      }
+    }
+    if length(o.upload_paths) > 0
+  }
+
   bucket_policy_json = {
     for k, st in local.bucket_policy_statements : k => jsonencode({
-      Version   = "2012-10-17"
-      Statement = [st]
+      Version = "2012-10-17"
+      Statement = concat(
+        [st],
+        contains(keys(local.bucket_upload_statements), k) ? [local.bucket_upload_statements[k]] : [],
+      )
     })
   }
 }

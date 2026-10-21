@@ -274,3 +274,69 @@ run "one_public_key_per_group_entry" {
     error_message = "A key group must be created for each declared group."
   }
 }
+
+run "uploads_get_a_write_statement_of_their_own" {
+  # `apply` for the same reason as the OAC statement: it embeds the distribution's ARN.
+  command = apply
+
+  variables {
+    origins = {
+      api = { http = { domain_name = "aaaa1111.execute-api.eu-west-1.amazonaws.com" } }
+      exports = {
+        bucket = { name = "acme-prod-exports", require_signed_urls = true, upload_paths = ["pending/*"] }
+      }
+    }
+    behaviors = [
+      {
+        path_pattern       = "/exports/*"
+        origin             = "exports"
+        preset             = "private-files"
+        allowed_methods    = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+        trusted_key_groups = ["downloads"]
+      },
+    ]
+  }
+
+  # PutObject on the upload keys only. On the read statement's `arn/*` it would let the
+  # distribution overwrite every object in the bucket.
+  assert {
+    condition     = output.bucket_upload_statements["exports"].Resource == ["arn:aws:s3:::acme-prod-exports/pending/*"]
+    error_message = "The write statement must cover the upload paths and nothing else."
+  }
+
+  assert {
+    condition     = output.bucket_upload_statements["exports"].Action == ["s3:PutObject"]
+    error_message = "The write statement must grant PutObject alone."
+  }
+
+  assert {
+    condition     = output.bucket_policy_statements["exports"].Action == ["s3:GetObject"]
+    error_message = "The read statement must stay read-only."
+  }
+
+  assert {
+    condition     = output.bucket_upload_statements["exports"].Condition.StringEquals["AWS:SourceArn"] == "arn:aws:cloudfront::111122223333:distribution/E1MOCKDIST00001"
+    error_message = "The write statement must be scoped to this distribution, like the read one."
+  }
+
+  # The document the bucket module receives carries both.
+  assert {
+    condition     = length(jsondecode(output.bucket_policy_json["exports"]).Statement) == 2
+    error_message = "bucket_policy_json must contain the read and the write statement."
+  }
+
+  # S3 rejects a document with two identical Sids.
+  assert {
+    condition     = output.bucket_upload_statements["exports"].Sid != output.bucket_policy_statements["exports"].Sid
+    error_message = "The two statements must have distinct Sids."
+  }
+}
+
+run "a_read_only_origin_has_no_write_statement" {
+  command = plan
+
+  assert {
+    condition     = length(output.bucket_upload_statements) == 0
+    error_message = "An origin without upload_paths must produce no write statement."
+  }
+}

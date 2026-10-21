@@ -41,6 +41,18 @@ variable "origins" {
     module returns the read statement to attach to that bucket in `bucket_policy_json`. The
     **name** is declared and not the domain name: the module derives domain and ARN from it,
     which is what keeps the caller free of a cycle between the bucket and this module.
+
+    `upload_paths` lets the distribution write as well as read, for uploads through signed
+    URLs:
+
+        exports = { bucket = { name = "acme-prod-exports", require_signed_urls = true,
+                               upload_paths = ["pending/*"] } }
+
+    The patterns are **object keys**, not URL paths: with an `origin_path` of `/files` and
+    a behavior on `/uploads/*`, a PUT to `/uploads/pending/a.pdf` writes the key
+    `files/uploads/pending/a.pdf`, and that is what the pattern has to match. The module
+    adds a second statement, `s3:PutObject` on those keys only, scoped to this distribution
+    like the read one.
   EOT
   type = map(object({
     bucket = optional(object({
@@ -51,6 +63,10 @@ variable "origins" {
       # itself a control: it makes the plan fail when a behavior serving this origin has
       # no `trusted_key_groups`.
       require_signed_urls = optional(bool, false)
+
+      # Object key patterns under which the distribution may write — `pending/*`, relative
+      # to the bucket and not to the URL. Empty means the origin is read-only.
+      upload_paths = optional(list(string), [])
     }))
 
     http = optional(object({
@@ -84,6 +100,29 @@ variable "origins" {
       )
     ])
     error_message = "`protocol_policy` must be one of http-only, https-only, match-viewer."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for o in values(var.origins) : [
+        for p in try(o.bucket.upload_paths, []) : p != "" && !startswith(p, "/")
+      ]
+    ]))
+    error_message = "`upload_paths` are object keys relative to the bucket — `pending/*`, not `/pending/*`: a leading slash matches no key S3 ever stores."
+  }
+
+  # A bucket origin that accepts writes from anyone who reaches the distribution is a free
+  # file host with the account paying the bill. Signed URLs are what restricts who may
+  # write, and `require_signed_urls` is what makes the plan check that every behavior
+  # serving the origin asks for one.
+  validation {
+    condition = alltrue([
+      for o in values(var.origins) : length(try(o.bucket.upload_paths, [])) == 0 || try(o.bucket.require_signed_urls, false)
+    ])
+    error_message = format(
+      "Bucket origins with `upload_paths` must be `require_signed_urls`, otherwise anyone who knows the domain can write into the bucket. Non-conforming: %s.",
+      join(", ", [for k, o in var.origins : k if length(try(o.bucket.upload_paths, [])) > 0 && !try(o.bucket.require_signed_urls, false)]),
+    )
   }
 }
 

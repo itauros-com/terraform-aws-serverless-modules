@@ -69,7 +69,8 @@ output "public_key_ids" {
 output "bucket_policy_json" {
   description = <<-EOT
     The read statement for each bucket origin, by origin key, ready for
-    `modules/bucket.policy_json` with `attach_policy = true`.
+    `modules/bucket.policy_json` with `attach_policy = true`. An origin with `upload_paths`
+    has the write statement in the same document.
 
     It has to go through the bucket module: S3 keeps **one policy document per bucket** and
     every write replaces it whole, so a separate `aws_s3_bucket_policy` here would silently
@@ -89,6 +90,18 @@ output "bucket_policy_statements" {
     yields an unknown value nobody can index into.
   EOT
   value       = local.bucket_policy_statements
+}
+
+output "bucket_upload_statements" {
+  description = <<-EOT
+    The write statement for each bucket origin that declares `upload_paths`, by origin key,
+    as an object like `bucket_policy_statements`. The origins without uploads are absent.
+
+    A composition that merges `bucket_policy_statements` must merge these too:
+    `bucket_policy_json` already contains both, the statements are kept apart so that the
+    read one keeps the shape it always had.
+  EOT
+  value       = local.bucket_upload_statements
 }
 
 output "behaviors" {
