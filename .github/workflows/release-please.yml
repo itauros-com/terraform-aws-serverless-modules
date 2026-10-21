@@ -1,0 +1,34 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # On every push to main, opens or updates the release PR: next version, computed
+  # from the Conventional Commits since the last tag, and the CHANGELOG entry. Merging
+  # it creates the tag and the GitHub release.
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # GitHub does not start workflows from events caused by GITHUB_TOKEN, so the
+      # release PR gets no `pull_request` run of ci, and without `ci-ok` the ruleset
+      # on main would not let it merge. workflow_dispatch is the exception: the run
+      # reports its checks on the release branch's head commit, which is the PR's.
+      - if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
