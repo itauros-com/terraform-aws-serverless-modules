@@ -43,7 +43,7 @@ locals {
   # upstream variable has every attribute optional.
   authorizers = {
     for key, a in var.authorizers : key => {
-      name            = format("%s-%s", local.api_name, key)
+      name            = coalesce(a.name, format("%s-%s", local.api_name, key))
       authorizer_type = a.type == "jwt" ? "JWT" : "REQUEST"
 
       identity_sources = a.identity_sources
@@ -95,7 +95,7 @@ locals {
 
 module "api" {
   source  = "terraform-aws-modules/apigateway-v2/aws"
-  version = "~> 5.0"
+  version = "~> 6.0"
 
   name          = local.api_name
   description   = var.description
@@ -145,7 +145,7 @@ module "api" {
   stage_access_log_settings = var.access_logs.enabled ? {
     create_log_group            = var.access_logs.destination_arn == null
     destination_arn             = var.access_logs.destination_arn
-    format                      = local.access_log_format
+    format                      = coalesce(var.access_logs.format, local.access_log_format)
     log_group_retention_in_days = var.access_logs.retention_days
     log_group_kms_key_id        = var.access_logs.kms_key_id
     log_group_tags              = local.tags

@@ -108,8 +108,12 @@ variable "authorizers" {
           }
           custom = { type = "lambda", function = "authorizer" }
         }
+
+    `name` overrides the derived `<api name>-<key>`: for an authorizer that already exists
+    under another name, adopted by a migration. It changes in place either way.
   EOT
   type = map(object({
+    name                    = optional(string)
     type                    = optional(string, "lambda")
     function                = optional(string)
     identity_sources        = optional(list(string), ["$request.header.Authorization"])
@@ -252,6 +256,11 @@ variable "access_logs" {
     retention_days  = optional(number, 30)
     kms_key_id      = optional(string)
     destination_arn = optional(string)
+
+    # The access log format, with `$context` variables: JSON, CLF or anything API Gateway
+    # accepts. Only to keep the format of a stage adopted by a migration: the default is
+    # the one described above.
+    format = optional(string)
   })
   default = {}
 }
