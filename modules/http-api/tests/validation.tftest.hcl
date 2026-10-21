@@ -149,3 +149,15 @@ run "route53_records_without_a_zone" {
 
   expect_failures = [var.domain]
 }
+
+run "permission_statement_id_with_invalid_characters" {
+  command = plan
+
+  variables {
+    routes                  = { "GET /users" = { function = "users" } }
+    permission_statement_id = "Allow API Gateway"
+  }
+
+  # Lambda refuses it at apply, after the plan was approved.
+  expect_failures = [var.permission_statement_id]
+}

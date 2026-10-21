@@ -140,16 +140,32 @@ variable "vpc" {
 
     This conditionality is deliberate: giving ENI permissions to a function that is
     not in a VPC is a pointless widening of its surface.
+
+    `replace_security_groups_on_destroy` moves the function's network interfaces onto
+    `replacement_security_group_ids` — the VPC's default group when empty — before the
+    function is destroyed. Lambda's interfaces outlive the function by up to 40 minutes,
+    and while they hold the function's security group, destroying that group fails with
+    DependencyViolation. Off by default, so that the plan of an existing function does not
+    change.
   EOT
   type = object({
     subnet_ids         = list(string)
     security_group_ids = list(string)
+
+    replace_security_groups_on_destroy = optional(bool, false)
+    replacement_security_group_ids     = optional(list(string), [])
   })
   default = null
 
   validation {
-    condition     = var.vpc == null || length(var.vpc.subnet_ids) > 0
+    condition     = var.vpc == null || length(try(var.vpc.subnet_ids, [])) > 0
     error_message = "vpc.subnet_ids cannot be empty."
+  }
+
+  # Without the flag the provider ignores the groups: they would be declared and never used.
+  validation {
+    condition     = var.vpc == null || try(var.vpc.replace_security_groups_on_destroy, false) || length(try(var.vpc.replacement_security_group_ids, [])) == 0
+    error_message = "vpc.replacement_security_group_ids is set but replace_security_groups_on_destroy is false: the groups would never be used."
   }
 }
 

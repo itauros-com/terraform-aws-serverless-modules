@@ -160,7 +160,7 @@ module "api" {
 resource "aws_lambda_permission" "invoke" {
   for_each = local.invoked_functions
 
-  statement_id  = format("AllowInvokeFrom-%s", local.api_name)
+  statement_id  = coalesce(var.permission_statement_id, format("AllowInvokeFrom-%s", local.api_name))
   action        = "lambda:InvokeFunction"
   function_name = var.functions[each.value].arn
   principal     = "apigateway.amazonaws.com"

@@ -95,6 +95,39 @@ run "one_permission_per_function_not_per_route" {
   }
 }
 
+run "permission_statement_id_derived_or_declared" {
+  command = plan
+
+  variables {
+    routes = {
+      "ANY /files" = { function = "files" }
+    }
+  }
+
+  assert {
+    condition     = aws_lambda_permission.invoke["files"].statement_id == "AllowInvokeFrom-acme-prod-api"
+    error_message = "Without permission_statement_id the id must be derived from the API's name."
+  }
+}
+
+run "permission_statement_id_of_an_adopted_api" {
+  command = plan
+
+  variables {
+    permission_statement_id = "AllowAPIGatewaySample"
+    routes = {
+      "ANY /files" = { function = "files" }
+    }
+  }
+
+  # The id the existing permissions have: moved into the module's addresses, they are not
+  # replaced.
+  assert {
+    condition     = aws_lambda_permission.invoke["files"].statement_id == "AllowAPIGatewaySample"
+    error_message = "A declared permission_statement_id must replace the derived one."
+  }
+}
+
 run "authorizer_name_derived_or_declared" {
   command = plan
 

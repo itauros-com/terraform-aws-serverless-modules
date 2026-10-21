@@ -93,6 +93,7 @@ variable "buckets" {
   type = map(object({
     versioning_enabled = optional(bool, true)
     manage_versioning  = optional(bool, true)
+    enforce_tls        = optional(bool, true)
     kms_key_arn        = optional(string)
     force_destroy      = optional(bool, false)
     object_ownership   = optional(string, "BucketOwnerEnforced")
@@ -420,6 +421,12 @@ variable "functions" {
       subnet_ids          = list(string)
       security_group_keys = optional(list(string), [])
       security_group_ids  = optional(list(string), [])
+
+      # Where the network interfaces go before the function is destroyed, so that its own
+      # security group can be destroyed too. See modules/function.
+      replace_security_groups_on_destroy = optional(bool, false)
+      replacement_security_group_keys    = optional(list(string), [])
+      replacement_security_group_ids     = optional(list(string), [])
     }))
 
     env = optional(map(string), {})
@@ -616,10 +623,17 @@ variable "glue_jobs" {
 # ------------------------------------------------------------------------------
 
 variable "http_apis" {
-  description = "HTTP API Gateways. The routes reference the functions by key."
+  description = <<-EOT
+    HTTP API Gateways. The routes reference the functions by key.
+
+    `permission_statement_id` is for adopting an existing API: see modules/http-api. Two
+    APIs invoking the same function cannot share it, and the plan stops if they do.
+  EOT
   type = map(object({
     description = optional(string)
     stage_name  = optional(string, "$default")
+
+    permission_statement_id = optional(string)
 
     routes = optional(map(object({
       function               = string

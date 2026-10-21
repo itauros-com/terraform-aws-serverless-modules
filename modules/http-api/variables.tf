@@ -42,6 +42,30 @@ variable "functions" {
   default = {}
 }
 
+variable "permission_statement_id" {
+  description = <<-EOT
+    The `statement_id` of the permissions that let the API invoke its functions. Null
+    derives it from the API's name: `AllowInvokeFrom-<api name>`.
+
+    Only to adopt functions whose permission for this API already exists under another
+    id: a permission cannot be renamed, so a different id means a new permission next to
+    the old one, and the old one removed in a second apply. With the existing id, the
+    permissions are moved into the module's addresses with `state mv` — one per invoked
+    function, `aws_lambda_permission.invoke["<function key>"]` — and the plan leaves them
+    alone.
+
+    The id must be unique within each function's policy: two APIs invoking the same
+    function cannot share it.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.permission_statement_id == null || can(regex("^[A-Za-z0-9_-]{1,100}$", coalesce(var.permission_statement_id, "x")))
+    error_message = "permission_statement_id may contain letters, digits, `-` and `_`, up to 100 characters."
+  }
+}
+
 variable "routes" {
   description = <<-EOT
     The API's routes. The key is the route key in the form `METHOD /path`, or `$default`.

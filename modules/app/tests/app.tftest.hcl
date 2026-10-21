@@ -328,6 +328,72 @@ run "network_permissions_only_to_the_function_in_the_vpc" {
   }
 }
 
+# What adopting an existing API at parity needs: the permissions under the id they already
+# have, the network interfaces moved off the function's group before it is destroyed, and a
+# bucket left without the TLS policy it never had.
+run "adoption_at_parity" {
+  command = plan
+
+  variables {
+    security_groups = {
+      lambda  = { vpc_name = "acme-prod-vpc" }
+      default = { vpc_name = "acme-prod-vpc" }
+    }
+
+    buckets = {
+      documents = { enforce_tls = false }
+    }
+
+    functions = {
+      authorizer = {
+        image = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/acme-prod/authorizer:v1"
+      }
+      files = {
+        image = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/acme-prod/files:v1"
+      }
+      worker = {
+        image = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/acme-prod/worker:v1"
+        vpc = {
+          subnet_ids                         = ["subnet-0123456789abcdef0"]
+          security_group_keys                = ["lambda"]
+          replace_security_groups_on_destroy = true
+          replacement_security_group_keys    = ["default"]
+        }
+      }
+    }
+
+    http_apis = {
+      apigw = {
+        permission_statement_id = "AllowAPIGatewaySample"
+        authorizers = {
+          custom = { type = "lambda", function = "authorizer" }
+        }
+        routes = {
+          "ANY /files" = { function = "files", authorizer = "custom" }
+        }
+      }
+    }
+
+    registries = {}
+    schedules  = {}
+  }
+
+  assert {
+    condition     = length(local.function_vpc["worker"].replacement_security_group_ids) == 1
+    error_message = "A replacement security group named by key must reach the function."
+  }
+
+  assert {
+    condition     = module.buckets["documents"].has_policy == false
+    error_message = "A bucket with enforce_tls = false and nothing else to merge must have no policy."
+  }
+
+  assert {
+    condition     = local.api_invoked_function_keys["apigw"] == toset(["authorizer", "files"])
+    error_message = "The functions an API invokes must include its routes' and its authorizers'."
+  }
+}
+
 run "async_destination_and_tracing" {
   command = plan
 

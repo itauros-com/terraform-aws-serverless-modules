@@ -62,9 +62,18 @@ output "policy_json_attached" {
   description = <<-EOT
     Whether the `policy_json` passed in takes part in the bucket's policy.
 
-    The bucket always has one — the TLS statements are unconditional — so this reports the
-    caller's document alone, which is the part that a duplicate `aws_s3_bucket_policy`
-    elsewhere would silently replace.
+    It reports the caller's document alone, which is the part that a duplicate
+    `aws_s3_bucket_policy` elsewhere would silently replace. Whether the bucket has a
+    policy at all is `has_policy`.
   EOT
   value       = local.attach_policy
+}
+
+output "has_policy" {
+  description = <<-EOT
+    Whether the bucket has a policy: the TLS statements, the caller's document, or both.
+    `false` only with `enforce_tls = false` and no `policy_json` — the case of a bucket
+    adopted as it was.
+  EOT
+  value       = var.enforce_tls || local.attach_policy
 }

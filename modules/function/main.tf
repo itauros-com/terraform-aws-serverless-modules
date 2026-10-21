@@ -92,6 +92,10 @@ locals {
     )
   }
 
+  # Whether the function's network interfaces leave its security groups before it is
+  # destroyed. Only meaningful in a VPC.
+  replace_security_groups = try(var.vpc.replace_security_groups_on_destroy, false) == true
+
   # ----------------------------------------------------------------------------
   # Asynchronous invocation
   # ----------------------------------------------------------------------------
@@ -152,6 +156,11 @@ module "lambda" {
 
   vpc_subnet_ids         = try(var.vpc.subnet_ids, null)
   vpc_security_group_ids = try(var.vpc.security_group_ids, null)
+
+  # Null and not `false` when off: it is what upstream passes when nobody sets it, so the
+  # plan of an existing function does not change.
+  replace_security_groups_on_destroy = local.replace_security_groups ? true : null
+  replacement_security_group_ids     = local.replace_security_groups && length(var.vpc.replacement_security_group_ids) > 0 ? var.vpc.replacement_security_group_ids : null
 
   # Conditional: ENI permissions on a function outside the VPC are a pointless
   # widening of its surface.

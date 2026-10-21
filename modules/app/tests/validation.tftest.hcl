@@ -324,6 +324,46 @@ run "glue_job_with_a_nonexistent_security_group" {
   expect_failures = [output.wiring]
 }
 
+run "replacement_security_group_that_does_not_exist" {
+  command = plan
+
+  variables {
+    functions = {
+      api = {
+        package = { local_path = "fixtures/dummy.zip" }
+        vpc = {
+          subnet_ids                         = ["subnet-0123456789abcdef0"]
+          replace_security_groups_on_destroy = true
+          replacement_security_group_keys    = ["defualt"]
+        }
+      }
+    }
+  }
+
+  expect_failures = [output.wiring]
+}
+
+run "two_apis_sharing_a_statement_id_on_one_function" {
+  command = plan
+
+  variables {
+    http_apis = {
+      public = {
+        permission_statement_id = "AllowAPIGatewaySample"
+        routes                  = { "GET /health" = { function = "api" } }
+      }
+      internal = {
+        permission_statement_id = "AllowAPIGatewaySample"
+        routes                  = { "GET /status" = { function = "api" } }
+      }
+    }
+  }
+
+  # Both would write the same statement into `api`'s policy: the second apply fails with a
+  # ResourceConflictException, after the plan was approved.
+  expect_failures = [output.wiring]
+}
+
 run "registry_towards_a_nonexistent_function" {
   command = plan
 
