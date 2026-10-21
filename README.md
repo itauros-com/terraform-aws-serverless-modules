@@ -146,9 +146,10 @@ first breaks callers' `plan`, the second requires `moved` blocks on their side. 
 
 ### Releasing
 
-Changes reach `main` through pull requests, merged once `ci-ok` passes. Commit messages follow
+Changes reach `main` through pull requests, squash-merged once `ci-ok` passes: the PR title becomes the
+commit subject and the PR description its body. PR titles follow
 [Conventional Commits](https://www.conventionalcommits.org/): `feat` and `fix` drive the version,
-`feat!` or a `BREAKING CHANGE:` footer marks a breaking change as defined above.
+`feat!` or a `BREAKING CHANGE:` footer in the description marks a breaking change as defined above.
 
 [release-please](https://github.com/googleapis/release-please) keeps a `chore(release): x.y.z` pull
 request open with the next version and its CHANGELOG entry; merging it creates the `vx.y.z` tag and the
