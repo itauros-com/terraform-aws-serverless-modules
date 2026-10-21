@@ -7,6 +7,37 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [0.5.0] — 2026-10-21
+
+The differences an adoption at parity left after 0.4.0: three options, with the defaults unchanged, and
+one procedure. With them, adopting an existing API leaves its invocation permissions, its functions'
+security group replacement and its buckets' policies as they are.
+
+### Added
+
+- `modules/http-api` — `permission_statement_id` replaces the derived `AllowInvokeFrom-<api name>`. A
+  permission cannot be renamed: with the id the existing permissions have, they move into
+  `aws_lambda_permission.invoke["<function>"]` with `state mv` instead of being created next to the old
+  ones, which a second apply would then remove. Also on `modules/app`'s `http_apis`, where the plan stops
+  if two APIs declare the same id and invoke the same function.
+- `modules/function` — `vpc.replace_security_groups_on_destroy` and `vpc.replacement_security_group_ids`:
+  the network interfaces leave the function's security groups before it is destroyed, so that destroying
+  a group does not fail with DependencyViolation while Lambda's interfaces still hold it. Off by default.
+  New output `security_group_replacement`. `modules/app` adds `replacement_security_group_keys`, resolved
+  like `security_group_keys`.
+- `modules/bucket` — `enforce_tls`, `true` by default. With `false` the TLS statements are not attached,
+  and with nothing else to merge the bucket has no policy. **On a bucket that has the TLS policy, `false`
+  removes it.** Also on `modules/app`'s `buckets`. New output `has_policy`.
+- `modules/app` README — "Adopting existing resources": the options above, and the two-apply procedure for
+  functions whose several inline policies become one, so that no function runs without its permissions
+  between the deletion of the old policies and the creation of the new one.
+
+### Notes
+
+A MINOR: the defaults are unchanged, no variable changes meaning and no state address moves. With the
+SG replacement off the module passes null to upstream, as before, so an existing function's plan does
+not change.
+
 ## [0.4.0] — 2026-10-21
 
 Three options to adopt existing resources into the modules without renaming or reconfiguring them, and
