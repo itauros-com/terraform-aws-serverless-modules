@@ -180,22 +180,54 @@ or TLS older than 1.2.
 interfaces leave the function's security group before it is destroyed, and the group can be destroyed in
 the same apply instead of failing with DependencyViolation for up to 40 minutes.
 
-**Inline policies, in two applies.** A function created with several inline policies — upstream's
-`attach_policy_jsons` — ends up with one, built from `grants` and `extra_policy_statements`, plus the VPC
-one. The old policies are destroyed and the new one created, and nothing orders the two: if a deletion
-lands first, the function runs for a few seconds, plus IAM's propagation, without its permissions. Create
-the new policies first, then let the full apply remove the old ones:
+**Inline policies, removed outside the plan.** A function created with several inline policies —
+upstream's `attach_policy_jsons` — ends up with one, built from `grants` and `extra_policy_statements`,
+plus the VPC one. The old policies are destroyed and the new ones created, and nothing orders the two: if a
+deletion lands first, the function runs for a few seconds, plus IAM's propagation, without its
+permissions.
 
-```bash
-terraform apply \
-  -target='module.app.module.functions["<fn>"].module.lambda.aws_iam_role_policy.additional_json[0]' \
-  -target='module.app.module.functions["<fn>"].module.lambda.aws_iam_role_policy.vpc[0]'   # if in a VPC
-terraform apply
-```
+`-target` cannot create the new ones first. They depend on the roles and functions the same apply
+updates, and targeting them brings the deletions of the old ones back into the plan. Targeting can also be
+refused outright, with "Moved resource instances excluded by targeting", when the adopted state still has
+addresses that upstream's `moved` blocks rename. Instead, the old policies leave the state, the apply only
+creates, and the old ones are deleted by hand once the new ones are verified:
 
-One `-target` pair per function, all in the same first apply. Check in the plan that the new policy
-grants everything the old ones did before running it: a permission missing from `grants` is lost at the
-second apply, not the first.
+1. Record the role and name of every old policy, which the state has and the next step removes, and back
+   the state up. The filter takes only the functions of this module, by its address in your
+   configuration: a Lambda built with upstream directly has `additional_jsons` too, and steps 2 and 5
+   would take its permissions away without any plan showing it.
+
+   ```bash
+   terraform state pull > pre-adoption.tfstate
+   terraform show -json | jq -r --arg app 'module.app' '.. | objects
+     | select(.type? == "aws_iam_role_policy" and .name? == "additional_jsons")
+     | select(.address | startswith($app + ".module.functions["))
+     | [.address, .values.role, .values.name] | @tsv' > old-inline-policies.tsv
+   ```
+
+   Read the file before going on: one line for each old policy of the adopted functions, and nothing
+   else.
+
+2. Remove them from the state. They stay attached to the roles in AWS:
+
+   ```bash
+   while IFS=$'\t' read -r addr _ _; do terraform state rm "$addr"; done < old-inline-policies.tsv
+   ```
+
+3. `terraform apply`. The plan creates `additional_json[0]`, and `vpc[0]` for a function in a VPC, and
+   destroys no `aws_iam_role_policy`: until step 5 each role has the old policies and the new ones.
+
+4. Verify the functions: smoke tests, and no `AccessDenied` in their logs. A permission missing from
+   `grants` shows up here, while the old policy still covers it, and goes into `grants` before step 5.
+
+5. Delete the old policies, keeping a copy of each. Upstream names them `<function>-<N>`:
+
+   ```bash
+   while IFS=$'\t' read -r _ role name; do
+     aws iam get-role-policy --role-name "$role" --policy-name "$name" > "$role.$name.json"
+     aws iam delete-role-policy --role-name "$role" --policy-name "$name"
+   done < old-inline-policies.tsv
+   ```
 
 ## The output to read in a review
 
