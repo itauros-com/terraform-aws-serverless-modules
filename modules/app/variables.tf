@@ -687,7 +687,7 @@ variable "http_apis" {
       format          = optional(string)
     }), {})
 
-    disable_default_endpoint = optional(bool, false)
+    disable_default_endpoint = optional(bool)
 
     alarms = optional(object({
       enabled                = optional(bool, true)

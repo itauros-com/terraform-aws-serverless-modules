@@ -89,7 +89,7 @@ To protect an HTTP API with the WAF you need CloudFront in front, so the WAF liv
 | throttling | 500 burst / 1000 rps | account quota | an API with no limits in front of Lambda is a cost amplifier: a runaway loop on the client side eats the whole account's concurrency |
 | access logs | enabled, JSON | absent | see below |
 | `detailed_metrics_enabled` | true | false | without it, there are no per-route metrics |
-| `disable_default_endpoint` | false | false | to be enabled with a custom domain, otherwise the API stays reachable from the AWS URL too |
+| `disable_default_endpoint` | true with a custom domain, false without | false | with a domain the API would stay reachable from the AWS URL too, bypassing what is tied to the domain |
 
 ## Access logs
 
@@ -107,6 +107,18 @@ and a bug.
 A lambda authorizer with `result_ttl_in_seconds` greater than zero **must** declare at least one
 `identity_sources`: without it, the answer is cached for all requests indiscriminately, and whoever gets
 through once gets through for everyone until it expires. The module blocks that.
+
+## Moving clients to a custom domain
+
+A custom domain turns the `execute-api` endpoint off by default. Clients that still call the AWS URL
+need it on until they have moved, so the domain comes in three steps:
+
+1. `domain` with `disable_default_endpoint = false`: the domain answers, and so does the AWS URL.
+2. The clients move to the domain.
+3. `disable_default_endpoint` removed, or `true`: the AWS URL stops answering.
+
+The domain, its API mapping and its Route53 records are created by this module and not by upstream, which
+turns the endpoint off whenever it creates a domain, whatever it is passed.
 
 ## Notes
 
@@ -135,9 +147,13 @@ through once gets through for everyone until it expires. The module blocks that.
 
 | Name | Type |
 | ---- | ---- |
+| [aws_apigatewayv2_api_mapping.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/apigatewayv2_api_mapping) | resource |
+| [aws_apigatewayv2_domain_name.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/apigatewayv2_domain_name) | resource |
 | [aws_cloudwatch_metric_alarm.latency](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) | resource |
 | [aws_cloudwatch_metric_alarm.server_errors](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) | resource |
 | [aws_lambda_permission.invoke](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_permission) | resource |
+| [aws_route53_record.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route53_record) | resource |
+| [aws_route53_zone.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/route53_zone) | data source |
 
 ## Inputs
 
@@ -149,7 +165,7 @@ through once gets through for everyone until it expires. The module blocks that.
 | <a name="input_authorizers"></a> [authorizers](#input\_authorizers) | The API's authorizers.<br/><br/>`type = "lambda"` uses a function as a REQUEST authorizer; `type = "jwt"` validates the<br/>tokens against an OIDC issuer without invoking anything.<br/><br/>    authorizers = {<br/>      jwt = {<br/>        type = "jwt"<br/>        jwt  = { issuer = "https://acme.eu.auth0.com/", audience = ["https://api.acme.example"] }<br/>      }<br/>      custom = { type = "lambda", function = "authorizer" }<br/>    }<br/><br/>`name` overrides the derived `<api name>-<key>`: for an authorizer that already exists<br/>under another name, adopted by a migration. It changes in place either way. | <pre>map(object({<br/>    name                    = optional(string)<br/>    type                    = optional(string, "lambda")<br/>    function                = optional(string)<br/>    identity_sources        = optional(list(string), ["$request.header.Authorization"])<br/>    result_ttl_in_seconds   = optional(number, 0)<br/>    enable_simple_responses = optional(bool, true)<br/>    jwt = optional(object({<br/>      issuer   = string<br/>      audience = list(string)<br/>    }))<br/>  }))</pre> | `{}` | no |
 | <a name="input_cors"></a> [cors](#input\_cors) | CORS configuration.<br/><br/>`allow_credentials = true` together with `allow_origins = ["*"]` is a combination<br/>browsers reject: the module blocks it instead of letting it be discovered from the<br/>frontend. | <pre>object({<br/>    allow_origins     = optional(list(string), [])<br/>    allow_methods     = optional(list(string), [])<br/>    allow_headers     = optional(list(string), ["content-type", "authorization", "x-amz-date", "x-api-key", "x-amz-security-token"])<br/>    expose_headers    = optional(list(string), [])<br/>    allow_credentials = optional(bool, false)<br/>    max_age           = optional(number)<br/>  })</pre> | `null` | no |
 | <a name="input_description"></a> [description](#input\_description) | The API's description. | `string` | `null` | no |
-| <a name="input_disable_default_endpoint"></a> [disable\_default\_endpoint](#input\_disable\_default\_endpoint) | Disables the `execute-api` endpoint generated by AWS.<br/><br/>To be enabled when there is a custom domain: otherwise the API stays reachable from the<br/>AWS URL too, which bypasses any protections tied to the domain. | `bool` | `false` | no |
+| <a name="input_disable_default_endpoint"></a> [disable\_default\_endpoint](#input\_disable\_default\_endpoint) | Disables the `execute-api` endpoint generated by AWS.<br/><br/>Null, the default, disables it when there is a custom domain and leaves it on otherwise:<br/>with a domain the API would stay reachable from the AWS URL too, which bypasses any<br/>protections tied to the domain. `false` keeps it on next to a domain, for the clients<br/>still calling the AWS URL while they move to the domain. | `bool` | `null` | no |
 | <a name="input_domain"></a> [domain](#input\_domain) | Custom domain. The certificate must be in the **same region** as the API, unlike<br/>CloudFront which wants them in us-east-1.<br/><br/>`zone_name` enables the creation of the Route53 records. | <pre>object({<br/>    name            = string<br/>    certificate_arn = optional(string)<br/>    zone_name       = optional(string)<br/>    create_records  = optional(bool, true)<br/>  })</pre> | `null` | no |
 | <a name="input_functions"></a> [functions](#input\_functions) | Integrable functions, by key. Every entry comes from<br/>`modules/function`.`integration_entry`:<br/><br/>    functions = {<br/>      api        = module.api.integration\_entry<br/>      authorizer = module.authorizer.integration\_entry<br/>    }<br/><br/>Both `arn` and `invoke_arn` are needed because they do different things: the API's<br/>integration uses `invoke_arn`, the invocation permission uses `arn`. | <pre>map(object({<br/>    arn        = string<br/>    invoke_arn = string<br/>    name       = optional(string)<br/>  }))</pre> | `{}` | no |
 | <a name="input_permission_statement_id"></a> [permission\_statement\_id](#input\_permission\_statement\_id) | The `statement_id` of the permissions that let the API invoke its functions. Null<br/>derives it from the API's name: `AllowInvokeFrom-<api name>`.<br/><br/>Only to adopt functions whose permission for this API already exists under another<br/>id: a permission cannot be renamed, so a different id means a new permission next to<br/>the old one, and the old one removed in a second apply. With the existing id, the<br/>permissions are moved into the module's addresses with `state mv` — one per invoked<br/>function, `aws_lambda_permission.invoke["<function key>"]` — and the plan leaves them<br/>alone.<br/><br/>The id must be unique within each function's policy: two APIs invoking the same<br/>function cannot share it. | `string` | `null` | no |
@@ -166,8 +182,9 @@ through once gets through for everyone until it expires. The module blocks that.
 | <a name="output_access_log_group_name"></a> [access\_log\_group\_name](#output\_access\_log\_group\_name) | Name of the access logs' log group. Null when they are disabled or sent to an external destination. |
 | <a name="output_alarm_arns"></a> [alarm\_arns](#output\_alarm\_arns) | The created alarms' ARNs, by type. An empty map when the alarms are disabled. |
 | <a name="output_arn"></a> [arn](#output\_arn) | The API's ARN. |
+| <a name="output_default_endpoint_disabled"></a> [default\_endpoint\_disabled](#output\_default\_endpoint\_disabled) | Whether the `execute-api` endpoint is disabled: `disable_default_endpoint`, or, when that is null, whether there is a custom domain. |
 | <a name="output_domain_name"></a> [domain\_name](#output\_domain\_name) | The custom domain's target domain name, the one to point at in DNS. Null without a custom domain. |
-| <a name="output_endpoint"></a> [endpoint](#output\_endpoint) | The `execute-api` endpoint generated by AWS. It stays set even with `disable_default_endpoint`, but in that case it does not answer. |
+| <a name="output_endpoint"></a> [endpoint](#output\_endpoint) | The `execute-api` endpoint generated by AWS. It stays set even when the endpoint is disabled, but in that case it does not answer: see `default_endpoint_disabled`. |
 | <a name="output_execution_arn"></a> [execution\_arn](#output\_execution\_arn) | The execution ARN, the base of the invocation permissions' source ARNs. |
 | <a name="output_id"></a> [id](#output\_id) | The API's ID. |
 | <a name="output_invoke_url"></a> [invoke\_url](#output\_invoke\_url) | The stage's invocation URL. It is the one to use in the clients. |

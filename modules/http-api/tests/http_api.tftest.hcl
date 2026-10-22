@@ -243,4 +243,81 @@ run "without_a_custom_domain" {
     condition     = output.domain_name == null
     error_message = "Without a custom domain the domain output must be null."
   }
+
+  assert {
+    condition     = output.default_endpoint_disabled == false
+    error_message = "Without a custom domain the execute-api endpoint must stay on."
+  }
+}
+
+run "a_custom_domain_disables_the_default_endpoint" {
+  command = plan
+
+  variables {
+    routes = { "GET /health" = { function = "users" } }
+    domain = {
+      name            = "api.acme.example"
+      certificate_arn = "arn:aws:acm:eu-west-1:111122223333:certificate/abc"
+      create_records  = false
+    }
+  }
+
+  assert {
+    condition     = output.default_endpoint_disabled == true
+    error_message = "With a custom domain and no disable_default_endpoint the execute-api endpoint must be disabled."
+  }
+
+  assert {
+    condition     = length(aws_apigatewayv2_domain_name.this) == 1 && length(aws_apigatewayv2_api_mapping.this) == 1
+    error_message = "A custom domain must create the domain name and its API mapping in this module."
+  }
+
+  assert {
+    condition     = length(aws_route53_record.this) == 0
+    error_message = "create_records = false must create no record."
+  }
+}
+
+# Upstream forces the endpoint off whenever it creates the domain: an API whose clients
+# still call the AWS URL could not get a domain without cutting them off.
+run "a_custom_domain_can_keep_the_default_endpoint" {
+  command = plan
+
+  variables {
+    routes = { "GET /health" = { function = "users" } }
+    domain = {
+      name            = "api.acme.example"
+      certificate_arn = "arn:aws:acm:eu-west-1:111122223333:certificate/abc"
+      create_records  = false
+    }
+    disable_default_endpoint = false
+  }
+
+  assert {
+    condition     = output.default_endpoint_disabled == false
+    error_message = "disable_default_endpoint = false must keep the execute-api endpoint on next to a custom domain."
+  }
+}
+
+run "a_custom_domain_with_records" {
+  command = plan
+
+  variables {
+    routes = { "GET /health" = { function = "users" } }
+    domain = {
+      name            = "api.acme.example"
+      certificate_arn = "arn:aws:acm:eu-west-1:111122223333:certificate/abc"
+      zone_name       = "acme.example"
+    }
+  }
+
+  assert {
+    condition     = toset(keys(aws_route53_record.this)) == toset(["A", "AAAA"])
+    error_message = "With create_records the domain must get an A and an AAAA alias record."
+  }
+
+  assert {
+    condition     = aws_route53_record.this["A"].name == "api.acme.example"
+    error_message = "The records must be named after the domain."
+  }
 }
