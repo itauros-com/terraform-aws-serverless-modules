@@ -5,7 +5,6 @@ on:
     branches: [main]
 
 permissions:
-  actions: write
   contents: write
   issues: write
   pull-requests: write
@@ -14,6 +13,11 @@ jobs:
   # On every push to main, opens or updates the release PR: next version, computed
   # from the Conventional Commits since the last tag, and the CHANGELOG entry. Merging
   # it creates the tag; the CHANGELOG is the release notes.
+  #
+  # The release PR is opened by github-actions[bot], and GitHub holds its `pull_request`
+  # run of ci until someone approves it: `ci-ok`, which the ruleset on main requires,
+  # appears only after that. A workflow_dispatch run of ci on the release branch does
+  # not count as the PR's check.
   release-please:
     runs-on: ubuntu-latest
     steps:
@@ -22,19 +26,6 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-      # GitHub does not start workflows from events caused by GITHUB_TOKEN, so the
-      # release PR gets no `pull_request` run of ci, and without `ci-ok` the ruleset
-      # on main would not let it merge. workflow_dispatch is the exception: the run
-      # reports its checks on the release branch's head commit, which is the PR's.
-      #
-      # The PR is read with jq and not with fromJSON: a step's env is evaluated even
-      # when its `if` is false, and `pr` is empty on a push that opens no release PR.
-      - if: steps.release.outputs.prs_created == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ steps.release.outputs.pr }}
-        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$(jq -r .headBranchName <<<"$PR")"
 
       # Only the tag is wanted. release-please creates the tag by creating the GitHub
       # release, and with `skip-github-release` it creates neither, and then refuses to
