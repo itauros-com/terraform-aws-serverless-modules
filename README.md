@@ -153,7 +153,10 @@ commit subject and the PR description its body. PR titles follow
 
 [release-please](https://github.com/googleapis/release-please) keeps a `chore(release): x.y.z` pull
 request open with the next version and its CHANGELOG entry; merging it creates the `vx.y.z` tag, and no
-GitHub release: the CHANGELOG is the release notes. Before 1.0, a `feat` and a breaking change both bump the MINOR, a `fix` the PATCH. The
-entry is generated from the commit subjects: the notes that explain an upgrade go into the
-release PR's CHANGELOG.md, edited on its branch right before merging, since every push to `main`
-regenerates it.
+GitHub release: the CHANGELOG is the release notes. Before 1.0, a `feat` and a breaking change both bump
+the MINOR, a `fix` the PATCH. The entry is generated from the commit subjects: the notes that explain an
+upgrade go into the release PR's CHANGELOG.md, edited on its branch right before merging, since every
+push to `main` regenerates it.
+
+The release PR is opened by github-actions[bot], and GitHub holds its CI run until it is approved:
+"Approve workflows to run" on the PR, after which `ci-ok` appears and the PR can be merged.
