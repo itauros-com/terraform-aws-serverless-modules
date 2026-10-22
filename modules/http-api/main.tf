@@ -3,6 +3,9 @@ locals {
 
   tags = merge(var.tags, { Name = local.api_name })
 
+  # Off by default only next to a custom domain, which would otherwise be bypassed.
+  disable_default_endpoint = coalesce(var.disable_default_endpoint, var.domain != null)
+
   # `authorization_type` is derived from the authorizer's type, not declared.
   # In the previous wiring the two had to be written together and could diverge: a route
   # with an authorizer but `authorization_type = "NONE"` is public while looking
@@ -113,22 +116,18 @@ module "api" {
     max_age           = var.cors.max_age
   }
 
-  disable_execute_api_endpoint = var.disable_default_endpoint
+  disable_execute_api_endpoint = local.disable_default_endpoint
 
   authorizers = local.authorizers
   routes      = local.routes
 
-  # The module does not create certificates: validating them has timings and DNS
-  # dependencies that do not belong to an API's lifecycle.
-  create_domain_name = var.domain != null
+  # The custom domain is in domain.tf: with one, upstream forces
+  # `disable_execute_api_endpoint` to true whatever it is passed.
+  create_domain_name = false
 
   # An empty string and not null: the upstream module computes locals over `domain_name`
   # unguarded, so a null makes the plan fail even when the custom domain is not requested.
-  domain_name                 = try(var.domain.name, "")
-  domain_name_certificate_arn = try(var.domain.certificate_arn, null)
-  create_certificate          = false
-  create_domain_records       = try(var.domain.create_records, false)
-  hosted_zone_name            = try(var.domain.zone_name, null)
+  domain_name = ""
 
   create_stage = true
   stage_name   = var.stage_name

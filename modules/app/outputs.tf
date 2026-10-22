@@ -60,14 +60,15 @@ output "glue_jobs" {
 }
 
 output "http_apis" {
-  description = "Endpoint, invocation URL and effective per-route authorization of every API."
+  description = "Endpoint, invocation URL, custom domain and effective per-route authorization of every API. `default_endpoint_disabled` says whether the `execute-api` endpoint answers."
   value = {
     for k, m in module.http_apis : k => {
-      id                  = m.id
-      endpoint            = m.endpoint
-      invoke_url          = m.invoke_url
-      domain_name         = m.domain_name
-      route_authorization = m.route_authorization
+      id                        = m.id
+      endpoint                  = m.endpoint
+      invoke_url                = m.invoke_url
+      default_endpoint_disabled = m.default_endpoint_disabled
+      domain_name               = m.domain_name
+      route_authorization       = m.route_authorization
     }
   }
 }

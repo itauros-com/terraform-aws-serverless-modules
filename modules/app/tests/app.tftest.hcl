@@ -308,6 +308,47 @@ run "invocation_permissions_deduplicated_and_including_the_authorizer" {
   }
 }
 
+run "default_endpoint_off_with_a_domain_unless_kept" {
+  command = plan
+
+  # `kept` is an API whose clients still call the AWS URL while they move to the domain:
+  # `http_apis[*].disable_default_endpoint` must reach modules/http-api as false, not be
+  # replaced by a default.
+  variables {
+    http_apis = {
+      plain = {
+        routes = { "GET /health" = { function = "files" } }
+      }
+      domain = {
+        routes = { "GET /health" = { function = "files" } }
+        domain = {
+          name            = "api.acme.example"
+          certificate_arn = "arn:aws:acm:eu-west-1:111122223333:certificate/abc"
+          create_records  = false
+        }
+      }
+      kept = {
+        routes = { "GET /health" = { function = "files" } }
+        domain = {
+          name            = "api.stg.acme.example"
+          certificate_arn = "arn:aws:acm:eu-west-1:111122223333:certificate/abc"
+          create_records  = false
+        }
+        disable_default_endpoint = false
+      }
+    }
+  }
+
+  assert {
+    condition = { for k, a in output.http_apis : k => a.default_endpoint_disabled } == {
+      plain  = false
+      domain = true
+      kept   = false
+    }
+    error_message = "execute-api must be off with a domain, on without, and on next to a domain with disable_default_endpoint = false."
+  }
+}
+
 run "network_permissions_only_to_the_function_in_the_vpc" {
   command = plan
 
