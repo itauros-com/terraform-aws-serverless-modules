@@ -13,7 +13,7 @@ permissions:
 jobs:
   # On every push to main, opens or updates the release PR: next version, computed
   # from the Conventional Commits since the last tag, and the CHANGELOG entry. Merging
-  # it creates the tag and the GitHub release.
+  # it creates the tag; the CHANGELOG is the release notes.
   release-please:
     runs-on: ubuntu-latest
     steps:
@@ -35,3 +35,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ steps.release.outputs.pr }}
         run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$(jq -r .headBranchName <<<"$PR")"
+
+      # Only the tag is wanted. release-please creates the tag by creating the GitHub
+      # release, and with `skip-github-release` it creates neither, and then refuses to
+      # open the next release PR while a merged one is untagged. So the release is
+      # created and deleted here, and the tag stays: `gh release delete` keeps it.
+      - if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
