@@ -152,8 +152,8 @@ commit subject and the PR description its body. PR titles follow
 `feat!` or a `BREAKING CHANGE:` footer in the description marks a breaking change as defined above.
 
 [release-please](https://github.com/googleapis/release-please) keeps a `chore(release): x.y.z` pull
-request open with the next version and its CHANGELOG entry; merging it creates the `vx.y.z` tag and the
-GitHub release. Before 1.0, a `feat` and a breaking change both bump the MINOR, a `fix` the PATCH. The
+request open with the next version and its CHANGELOG entry; merging it creates the `vx.y.z` tag, and no
+GitHub release: the CHANGELOG is the release notes. Before 1.0, a `feat` and a breaking change both bump the MINOR, a `fix` the PATCH. The
 entry is generated from the commit subjects: the notes that explain an upgrade go into the
 release PR's CHANGELOG.md, edited on its branch right before merging, since every push to `main`
 regenerates it.
