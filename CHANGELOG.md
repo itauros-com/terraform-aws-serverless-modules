@@ -7,6 +7,13 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [0.5.1](https://github.com/itauros-com/terraform-aws-serverless-modules/compare/v0.5.0...v0.5.1) (2026-10-22)
+
+
+### Fixed
+
+* **app:** adopt inline policies by removing the old ones from the state, not with -target ([#11](https://github.com/itauros-com/terraform-aws-serverless-modules/issues/11)) ([089d4f8](https://github.com/itauros-com/terraform-aws-serverless-modules/commit/089d4f89ea827d0eb587fd8b7ef2993592d9cae0))
+
 ## [0.5.0] — 2026-10-21
 
 The differences an adoption at parity left after 0.4.0: three options, with the defaults unchanged, and
