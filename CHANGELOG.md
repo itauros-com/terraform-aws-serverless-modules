@@ -7,6 +7,17 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [0.6.0](https://github.com/itauros-com/terraform-aws-serverless-modules/compare/v0.5.1...v0.6.0) (2026-10-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **http-api:** the custom domain's state addresses move from `module.api.aws_apigatewayv2_domain_name.this[0]` and `module.api.aws_apigatewayv2_api_mapping.this[0]` to `aws_apigatewayv2_domain_name.this[0]` and `aws_apigatewayv2_api_mapping.this[0]` inside modules/http-api, through moved blocks: nothing to do for them. The Route53 records, with `create_records`, move from `module.api.aws_route53_record.this["<domain>-A"]` and `["<domain>-AAAA"]` to `aws_route53_record.this["A"]` and `["AAAA"]`, which a moved block cannot name: run `terraform state mv` for both before the apply, or they are destroyed and created again.
+
+### Added
+
+* **http-api:** the custom domain in this module, so that execute-api can stay on next to it ([#12](https://github.com/itauros-com/terraform-aws-serverless-modules/issues/12)) ([eb98552](https://github.com/itauros-com/terraform-aws-serverless-modules/commit/eb98552054f858674c8016a25bbe219d589d3c37))
+
 ## [0.5.1](https://github.com/itauros-com/terraform-aws-serverless-modules/compare/v0.5.0...v0.5.1) (2026-10-22)
 
 
