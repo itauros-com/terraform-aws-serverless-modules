@@ -271,6 +271,11 @@ run "network_permissions_only_inside_the_vpc" {
     condition     = output.iam.network == false
     error_message = "A function without vpc must not receive the network permissions."
   }
+
+  assert {
+    condition     = output.policy_json == null
+    error_message = "A function without vpc and without grants must have no policy of its own."
+  }
 }
 
 run "network_permissions_with_the_vpc" {
@@ -288,6 +293,21 @@ run "network_permissions_with_the_vpc" {
   assert {
     condition     = output.iam.network == true
     error_message = "A function in a VPC must receive the network permissions."
+  }
+
+  # Upstream's network policy is AWSLambdaENIManagementAccess, without DescribeSubnets: the
+  # module adds it to the function's own policy, even with no grants.
+  assert {
+    condition = anytrue([
+      for s in jsondecode(output.policy_json).Statement :
+      s.Sid == "NetworkDescribeSubnets" && contains(flatten([s.Action]), "ec2:DescribeSubnets")
+    ])
+    error_message = "A function in a VPC must be allowed ec2:DescribeSubnets."
+  }
+
+  assert {
+    condition     = output.iam.grants == true
+    error_message = "A function in a VPC has a policy of its own, for DescribeSubnets."
   }
 
   # Off by default: an existing function's plan must not change.

@@ -105,7 +105,7 @@ locals {
   # not from the ARNs: the ARNs come from resources not yet created and are unknown,
   # and a count depending on an unknown value makes the plan fail with
   # "Invalid count argument".
-  has_policy       = length(var.grants) > 0 || length(var.extra_policy_statements) > 0
+  has_policy       = length(var.grants) > 0 || length(var.extra_policy_statements) > 0 || var.vpc != null
   has_async_target = var.async.enabled && var.async.on_failure != null
 
   # The outer `try` is necessary: `coalesce` with every argument null does not return
@@ -119,12 +119,28 @@ locals {
   ), null) : null
 }
 
+locals {
+  # The network permissions upstream attaches with `attach_network_policy` are a copy of
+  # AWSLambdaENIManagementAccess: the five ENI actions, without `ec2:DescribeSubnets`, which
+  # Lambda lists among the permissions a function in a VPC needs and which
+  # AWSLambdaVPCAccessExecutionRole has. A function adopted from a role with that managed
+  # policy would lose it. It goes into the function's own policy, next to the grants, and
+  # only when the function is in a VPC.
+  network_statements = var.vpc == null ? [] : [{
+    sid       = "NetworkDescribeSubnets"
+    effect    = "Allow"
+    actions   = ["ec2:DescribeSubnets"]
+    resources = ["*"]
+    condition = []
+  }]
+}
+
 module "grants" {
   source = "../grants"
 
   resources        = var.resources
   grants           = var.grants
-  extra_statements = var.extra_policy_statements
+  extra_statements = concat(var.extra_policy_statements, local.network_statements)
 }
 
 module "lambda" {

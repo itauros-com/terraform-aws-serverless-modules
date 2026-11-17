@@ -98,7 +98,7 @@ output "alarm_arns" {
 }
 
 output "policy_json" {
-  description = "The policy generated from the grants, for inspection and for tests. Null when there are no grants."
+  description = "The function's own policy — the grants, the extra statements and, in a VPC, `ec2:DescribeSubnets` — for inspection and for tests. Null when it has none of them."
   value       = module.grants.policy_json
 }
 
