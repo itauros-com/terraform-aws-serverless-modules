@@ -7,6 +7,13 @@ A **breaking change** in this repo is any change to the variable contract or to 
 modules generate. The two must be noted separately: the first breaks callers' `plan`, the second
 requires `moved` blocks on their side.
 
+## [0.6.1](https://github.com/itauros-com/terraform-aws-serverless-modules/compare/v0.6.0...v0.6.1) (2026-11-17)
+
+
+### Fixed
+
+* **function:** ec2:DescribeSubnets for functions in a VPC ([#17](https://github.com/itauros-com/terraform-aws-serverless-modules/issues/17)) ([4178c2b](https://github.com/itauros-com/terraform-aws-serverless-modules/commit/4178c2b4bfa7e41ec1c4d36421a6e2a2d520757b))
+
 ## [0.6.0](https://github.com/itauros-com/terraform-aws-serverless-modules/compare/v0.5.1...v0.6.0) (2026-10-22)
 
 
