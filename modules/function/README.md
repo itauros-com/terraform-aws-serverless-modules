@@ -90,6 +90,7 @@ own, based on the function's **actual** configuration:
 |---|---|
 | CloudWatch logs | always |
 | network (ENI) | only if `vpc` is set |
+| `ec2:DescribeSubnets` | only if `vpc` is set — upstream's ENI policy (AWSLambdaENIManagementAccess) lacks it, so it goes into the function's own policy |
 | X-Ray | only if `observability.tracing` is enabled |
 | writing to the on-failure destination | only if `async.on_failure` is set |
 
@@ -240,7 +241,7 @@ between environments a tag change in a PR.
 | <a name="output_log_group_arn"></a> [log\_group\_arn](#output\_log\_group\_arn) | The CloudWatch log group's ARN, for subscription filters. |
 | <a name="output_log_group_name"></a> [log\_group\_name](#output\_log\_group\_name) | The CloudWatch log group's name. |
 | <a name="output_name"></a> [name](#output\_name) | The function's name, already prefixed. |
-| <a name="output_policy_json"></a> [policy\_json](#output\_policy\_json) | The policy generated from the grants, for inspection and for tests. Null when there are no grants. |
+| <a name="output_policy_json"></a> [policy\_json](#output\_policy\_json) | The function's own policy — the grants, the extra statements and, in a VPC, `ec2:DescribeSubnets` — for inspection and for tests. Null when it has none of them. |
 | <a name="output_qualified_arn"></a> [qualified\_arn](#output\_qualified\_arn) | The published version's ARN. |
 | <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | The execution role's ARN. |
 | <a name="output_role_name"></a> [role\_name](#output\_role\_name) | The execution role's name, to attach policies from the outside. |
