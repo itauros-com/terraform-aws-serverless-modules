@@ -1,0 +1,14 @@
+# Read by the developer portal's discovery (every repository's catalog-info.yaml).
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: terraform-aws-serverless-modules
+  description: Terraform modules for serverless applications on AWS - IAM derived from capabilities, typed references, observability included.
+  annotations:
+    github.com/project-slug: itauros-com/terraform-aws-serverless-modules
+  tags: [terraform, opentofu, aws, serverless]
+spec:
+  type: library
+  lifecycle: production
+  owner: group:default/platform
+  system: platform
